@@ -1,8 +1,0 @@
-              precision    recall  f1-score   support
-
-       empty       1.00      1.00      1.00       288
-   not_empty       1.00      1.00      1.00       316
-
-    accuracy                           1.00       604
-   macro avg       1.00      1.00      1.00       604
-weighted avg       1.00      1.00      1.00       604
