@@ -1,0 +1,39 @@
+{
+    "accuracy": 1.0,
+    "balanced_accuracy": 1.0,
+    "macro_f1": 1.0,
+    "macro_precision": 1.0,
+    "macro_recall": 1.0,
+    "per_class": {
+        "empty": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 288
+        },
+        "not_empty": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 316
+        }
+    },
+    "confusion_matrix": [
+        [
+            288,
+            0
+        ],
+        [
+            0,
+            316
+        ]
+    ],
+    "train_image_counts": {
+        "empty": 2433,
+        "not_empty": 2411
+    },
+    "val_image_counts": {
+        "empty": 288,
+        "not_empty": 316
+    }
+}

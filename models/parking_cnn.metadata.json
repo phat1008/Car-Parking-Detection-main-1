@@ -1,0 +1,16 @@
+{
+    "model_type": "cnn",
+    "image_size": [
+        64,
+        64
+    ],
+    "color_format": "RGB",
+    "normalization": "divide_by_255",
+    "feature_type": "raw_pixels_cnn",
+    "classes": [
+        "empty",
+        "not_empty"
+    ],
+    "python_version": "3.11",
+    "tensorflow_version": "2.21.0"
+}

@@ -1,0 +1,11 @@
+image_path,true_label,predicted_label,confidence
+data\test\empty\00000130_00000072.jpg,empty,occupied,0.8859
+data\test\empty\00000140_00000072.jpg,empty,occupied,0.8187
+data\test\empty\00000170_00000072.jpg,empty,occupied,0.9014
+data\test\empty\00000280_00000072.jpg,empty,empty,0.5918
+data\test\empty\00000280_00000280.jpg,empty,empty,0.5652
+data\test\empty\00000310_00000072.jpg,empty,occupied,0.5705
+data\test\empty\00000350_00000280.jpg,empty,occupied,0.5664
+data\test\empty\00000690_00000026.jpg,empty,occupied,0.6125
+data\test\empty\00000690_00000280.jpg,empty,occupied,0.9751
+data\test\empty\00000810_00000280.jpg,empty,occupied,0.9537
