@@ -10,7 +10,7 @@ import cvzone
 import numpy as np
 import pandas as pd
 
-import config
+import src.parking_detection.config as config
 from car_detector import CarDetector
 from setup_directories import setup_directories
 

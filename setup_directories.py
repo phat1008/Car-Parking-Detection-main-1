@@ -6,7 +6,7 @@ import logging
 import os
 from typing import List, Tuple
 
-import config
+import src.parking_detection.config as config
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

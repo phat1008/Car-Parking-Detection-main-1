@@ -1,21 +1,54 @@
+import logging
 import pickle
 from pathlib import Path
 
 import cv2
 import numpy as np
 
+# Cấu hình logging để ghi log khi model không tồn tại hoặc lỗi
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 class ParkingClassifier:
-    def __init__(self, model_path):
-        model_path = Path(model_path)
+    def __init__(self, model_path, confidence_threshold=0.6):
+        """
+        Khởi tạo bộ phân loại ô đỗ xe.
+        :param model_path: Đường dẫn tới file model pickle (.p / .pkl)
+        :param confidence_threshold: Ngưỡng confidence tối thiểu (dưới mức này trả về 'unknown')
+        """
+        self.model_path = Path(model_path)
+        self.confidence_threshold = confidence_threshold
+        self.model = self._load_model()
 
-        if not model_path.exists():
-            raise FileNotFoundError(f"Model not found: {model_path}")
+    def _load_model(self):
+        """Load a compatible pickle model or fail fast with an actionable error."""
+        if not self.model_path.exists():
+            raise FileNotFoundError(
+                f"Không tìm thấy file model tại đường dẫn: {self.model_path}"
+            )
 
-        with model_path.open("rb") as file:
-            self.model = pickle.load(file)
+        try:
+            with self.model_path.open("rb") as file:
+                model = pickle.load(file)
+        except (OSError, pickle.PickleError, EOFError, ImportError, AttributeError) as exc:
+            raise RuntimeError(
+                f"Không thể load model {self.model_path}: {exc}"
+            ) from exc
+
+        if not hasattr(model, "predict"):
+            raise TypeError(
+                f"Model {self.model_path} không hợp lệ: thiếu phương thức predict"
+            )
+
+        logger.info(f"[INFO] Tải thành công model từ {self.model_path}")
+        return model
 
     def preprocess(self, crop):
+        """
+        1. Giữ nguyên preprocessing (Resize 15x15, chuẩn hóa 0-1, flatten vector)
+        để không làm sai lệch mô hình đã train.
+        """
         if crop is None or crop.size == 0:
             raise ValueError("Empty parking-space crop")
 
@@ -25,26 +58,63 @@ class ParkingClassifier:
             interpolation=cv2.INTER_AREA,
         )
 
-        # Phải giống train_model.py
         crop = crop.astype(np.float32) / 255.0
-
         features = crop.reshape(1, -1)
 
         return features
 
     def predict(self, crop):
-        features = self.preprocess(crop)
+        """
+        Thực hiện phân loại ô crop với các tiêu chí chuẩn hóa nhãn:
+        - 'empty', 'occupied', 'unknown'
+        - Xử lý crop rỗng trả về 'unknown' thay vì crash hoặc coi là occupied.
+        """
+        # Crop rỗng là lỗi hình học của slot, không phải dự đoán không chắc chắn.
+        if crop is None or crop.size == 0:
+            return {
+                "label": "invalid",
+                "state": "invalid",
+                "is_empty": False,
+                "confidence": 0.0,
+            }
 
-        label = self.model.predict(features)[0]
+        try:
+            features = self.preprocess(crop)
 
-        confidence = None
+            raw_label = self.model.predict(features)[0]
+            confidence = None
 
-        if hasattr(self.model, "predict_proba"):
-            probabilities = self.model.predict_proba(features)[0]
-            confidence = float(np.max(probabilities))
+            if hasattr(self.model, "predict_proba"):
+                probabilities = self.model.predict_proba(features)[0]
+                confidence = float(np.max(probabilities))
+            else:
+                confidence = 1.0  # Mặc định nếu model không hỗ trợ predict_proba
 
-        return {
-            "label": str(label),
-            "is_empty": str(label) == "empty",
-            "confidence": confidence,
-        }
+            # 2 & 3. Chuẩn hóa nhãn: Chuyển 'not_empty' (hoặc các biến thể tương đương) thành 'occupied'
+            raw_str = str(raw_label).lower()
+            if raw_str in ["empty", "0"]:
+                normalized_label = "empty"
+                is_empty = True
+            elif raw_str in ["not_empty", "occupied", "car", "1"]:
+                normalized_label = "occupied"
+                is_empty = False
+            else:
+                normalized_label = "unknown"
+                is_empty = False
+
+            # 4. Nếu confidence thấp hơn ngưỡng, trả về 'unknown'
+            if confidence is not None and confidence < self.confidence_threshold:
+                normalized_label = "unknown"
+                is_empty = False
+
+            return {
+                "label": normalized_label,
+                "state": normalized_label,  # Hỗ trợ thêm trường 'state' theo chuẩn kết quả mong muốn
+                "is_empty": is_empty,
+                "confidence": round(confidence, 4) if confidence is not None else None,
+            }
+
+        except (ValueError, TypeError, IndexError, RuntimeError) as exc:
+            raise RuntimeError(
+                f"Lỗi trong quá trình predict crop bằng model {self.model_path}: {exc}"
+            ) from exc

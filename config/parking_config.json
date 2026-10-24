@@ -9,127 +9,80 @@
             "y": 213,
             "width": 111,
             "height": 61,
-            "type": "regular"
+            "type": "regular",
+            "enabled": true
         },
         {
             "id": 1,
-            "x": 1922,
-            "y": 315,
-            "width": 106,
-            "height": 62,
-            "type": "regular"
+            "x": 1920,
+            "y": 318,
+            "width": 111,
+            "height": 65,
+            "type": "regular",
+            "enabled": true
         },
         {
             "id": 2,
-            "x": 1927,
-            "y": 421,
-            "width": 120,
-            "height": 56,
-            "type": "regular"
+            "x": 2076,
+            "y": 357,
+            "width": 104,
+            "height": 55,
+            "type": "regular",
+            "enabled": true
         },
         {
             "id": 3,
-            "x": 1930,
-            "y": 484,
-            "width": 110,
-            "height": 52,
-            "type": "regular"
+            "x": 2079,
+            "y": 244,
+            "width": 96,
+            "height": 63,
+            "type": "regular",
+            "enabled": true
         },
         {
             "id": 4,
-            "x": 1930,
-            "y": 543,
-            "width": 107,
-            "height": 44,
-            "type": "regular"
+            "x": 2079,
+            "y": 423,
+            "width": 101,
+            "height": 47,
+            "type": "regular",
+            "enabled": true
         },
         {
             "id": 5,
-            "x": 1925,
-            "y": 605,
-            "width": 112,
+            "x": 2084,
+            "y": 483,
+            "width": 96,
             "height": 53,
-            "type": "regular"
+            "type": "regular",
+            "enabled": true
         },
         {
             "id": 6,
-            "x": 1925,
-            "y": 666,
-            "width": 117,
-            "height": 49,
-            "type": "regular"
+            "x": 2084,
+            "y": 543,
+            "width": 91,
+            "height": 50,
+            "type": "regular",
+            "enabled": true
         },
         {
             "id": 7,
-            "x": 1925,
-            "y": 729,
-            "width": 117,
-            "height": 45,
-            "type": "regular"
+            "x": 2086,
+            "y": 599,
+            "width": 96,
+            "height": 60,
+            "type": "regular",
+            "enabled": true
         },
         {
             "id": 8,
-            "x": 2067,
-            "y": 242,
-            "width": 115,
-            "height": 64,
-            "type": "regular"
-        },
-        {
-            "id": 9,
-            "x": 2067,
-            "y": 347,
-            "width": 117,
-            "height": 66,
-            "type": "regular"
-        },
-        {
-            "id": 10,
-            "x": 2057,
-            "y": 426,
-            "width": 122,
-            "height": 44,
-            "type": "regular"
-        },
-        {
-            "id": 11,
-            "x": 2062,
-            "y": 480,
-            "width": 120,
-            "height": 53,
-            "type": "regular"
-        },
-        {
-            "id": 12,
-            "x": 2059,
-            "y": 541,
-            "width": 125,
-            "height": 49,
-            "type": "regular"
-        },
-        {
-            "id": 13,
-            "x": 2062,
-            "y": 602,
-            "width": 127,
-            "height": 59,
-            "type": "regular"
-        },
-        {
-            "id": 14,
-            "x": 2059,
-            "y": 666,
-            "width": 123,
-            "height": 46,
-            "type": "regular"
-        },
-        {
-            "id": 15,
-            "x": 2059,
-            "y": 722,
-            "width": 123,
-            "height": 47,
-            "type": "regular"
+            "x": 2086,
+            "y": 664,
+            "width": 99,
+            "height": 50,
+            "type": "regular",
+            "enabled": true
         }
     ]
 }
