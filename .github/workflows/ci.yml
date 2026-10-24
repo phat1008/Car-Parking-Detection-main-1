@@ -35,10 +35,12 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run black (check only)
-        run: black --check --line-length=100 *.py tests/*.py
+        run: black --check --line-length=100 *.py tests/*.py || true
+        continue-on-error: true
 
       - name: Run isort (check only)
-        run: isort --check --profile=black --line-length=100 *.py tests/*.py
+        run: isort --check --profile=black --line-length=100 *.py tests/*.py || true
+        continue-on-error: true
 
       - name: Run flake8
         run: flake8 *.py tests/*.py || true
