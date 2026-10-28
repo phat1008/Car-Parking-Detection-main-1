@@ -88,9 +88,6 @@ parking_status.csv
 *.onnx
 *.weights
 
-# Saved parking positions (optional - comment out if you want to version control them)
-CarParkPos
-
 # Test videos/images
 *.mp4
 *.avi
