@@ -3,7 +3,7 @@ Configuration file for Car Parking Detection System
 All configurable parameters are centralized here for easy management
 """
 
-from typing import Final, List, Tuple
+from typing import Final, Tuple
 
 # Parking Space Dimensions
 PARKING_WIDTH: Final[int] = 107
@@ -11,11 +11,6 @@ PARKING_HEIGHT: Final[int] = 48
 
 # Detection Thresholds
 OCCUPANCY_THRESHOLD: Final[int] = 900  # Pixel count threshold for space occupancy
-CONFIDENCE_THRESHOLD: Final[float] = 0.5  # Minimum confidence for vehicle detection
-
-# YOLO Model Configuration
-MODEL_PATH: Final[str] = "yolov8n.pt"
-CAR_CLASSES: Final[List[int]] = [2, 3, 5, 7]  # COCO classes: cars, motorcycles, buses, trucks
 
 # File Paths
 POSITION_FILE: Final[str] = "CarParkPos"

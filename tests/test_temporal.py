@@ -26,9 +26,9 @@ def test_slot_smoother_requires_consecutive_frames_for_change():
     smoother = SlotSmoother(window_size=7, min_stable_count=5)
     slot_id = 1
 
-    assert smoother.update(slot_id, "empty", confidence=0.9) == "empty"
+    assert smoother.update(slot_id, "empty", confidence=0.9) == "unknown"
     for _ in range(4):
-        assert smoother.update(slot_id, "occupied", confidence=0.9) == "empty"
+        assert smoother.update(slot_id, "occupied", confidence=0.9) == "unknown"
 
     assert smoother.update(slot_id, "occupied", confidence=0.9) == "occupied"
 
@@ -37,5 +37,5 @@ def test_slot_smoother_ignores_low_confidence_observation():
     smoother = SlotSmoother(window_size=7, min_stable_count=5)
     slot_id = 2
 
-    assert smoother.update(slot_id, "empty", confidence=0.9) == "empty"
-    assert smoother.update(slot_id, "occupied", confidence=0.2) == "empty"
+    assert smoother.update(slot_id, "empty", confidence=0.9) == "unknown"
+    assert smoother.update(slot_id, "occupied", confidence=0.2) == "unknown"

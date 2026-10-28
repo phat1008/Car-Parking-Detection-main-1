@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 import joblib
 from sklearn.metrics import classification_report, confusion_matrix, roc_curve, precision_recall_curve, accuracy_score, precision_recall_fscore_support
+from skimage.feature import hog
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -36,17 +37,17 @@ def evaluate():
     (misclassified_dir / "false_occupied").mkdir(parents=True, exist_ok=True)
     (misclassified_dir / "low_confidence").mkdir(parents=True, exist_ok=True)
 
-    # Giả định dữ liệu test được tổ chức theo thư mục: data/test/empty và data/test/occupied
+    # Dữ liệu test được tổ chức theo thư mục: data/test/empty và data/test/not_empty.
     test_dir = Path(args.data)
     if not test_dir.exists():
-        print(f"[Lỗi] Không tìm thấy thư mục/file dữ liệu test tại: {test_dir}")
+        print(f"[Error] Test data directory/file not found: {test_dir}")
         return
 
     images = []
     labels = []
     image_paths = []
     
-    for category in ["empty", "occupied"]:
+    for category in ["empty", "not_empty"]:
         cat_dir = test_dir / category
         if cat_dir.exists():
             for img_path in cat_dir.glob("*.*"):
@@ -58,23 +59,38 @@ def evaluate():
                     image_paths.append(img_path)
 
     if not images:
-        print("[Lỗi] Không tìm thấy ảnh nào trong thư mục test!")
+        print("[Error] No test images found.")
         return
 
-    X = np.array(images) / 255.0
+    X = np.array(images)
     y_true = np.array(labels)
 
     # Dự đoán
     if model_type == "keras":
-        y_probs = model.predict(X, verbose=0).flatten()
+        # CNN tự chuẩn hóa trong layers.Rescaling(1/255) như lúc train.
+        y_probs = model.predict(X.astype(np.float32), verbose=0).flatten()
         y_pred = (y_probs > 0.5).astype(int)
     else:
-        # Dành cho SVM (nếu có trích xuất đặc trưng phù hợp)
-        # Flatten ảnh cho SVM cơ bản
-        n_samples = X.shape[0]
-        X_flat = X.reshape(n_samples, -1)
-        y_probs = model.predict_proba(X_flat)[:, 1]
-        y_pred = model.predict(X_flat)
+        # SVM được huấn luyện trên đặc trưng HOG, không phải raw pixels.
+        hog_features = np.array(
+            [
+                hog(
+                    cv2.cvtColor(image, cv2.COLOR_BGR2GRAY),
+                    orientations=9,
+                    pixels_per_cell=(8, 8),
+                    cells_per_block=(2, 2),
+                    block_norm="L2-Hys",
+                    visualize=False,
+                )
+                for image in X
+            ]
+        )
+        y_pred = model.predict(hog_features)
+        if hasattr(model, "predict_proba"):
+            y_probs = model.predict_proba(hog_features)[:, 1]
+        else:
+            decision = model.decision_function(hog_features)
+            y_probs = 1.0 / (1.0 + np.exp(-decision))
 
     # Tính toán các chỉ số
     acc = accuracy_score(y_true, y_pred)
@@ -82,7 +98,7 @@ def evaluate():
     report = classification_report(y_true, y_pred, target_names=["empty", "occupied"])
     conf_matrix = confusion_matrix(y_true, y_pred)
 
-    print(f"Đánh giá hoàn tất! Accuracy: {acc:.4f}, F1-score: {f1:.4f}")
+    print(f"Evaluation complete. Accuracy: {acc:.4f}, F1-score: {f1:.4f}")
 
     # 1. Lưu classification_report.txt
     with open(output_dir / "classification_report.txt", "w", encoding="utf-8") as f:
@@ -156,7 +172,7 @@ def evaluate():
     df_wrong = pd.DataFrame(wrong_records)
     df_wrong.to_csv(output_dir / "wrong_predictions.csv", index=False)
     
-    print(f"[Thành công] Toàn bộ báo cáo và hình ảnh phân tích lỗi đã được lưu tại: {output_dir}")
+    print(f"[Success] Reports and error analysis images saved to: {output_dir}")
 
 if __name__ == "__main__":
     evaluate()

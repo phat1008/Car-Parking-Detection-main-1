@@ -4,9 +4,11 @@ from pathlib import Path
 import numpy as np
 import tensorflow as tf
 import joblib
-from collections import deque, Counter
 from datetime import datetime
 import csv
+from src.slot_manager import SlotManager
+from src.smoother import SlotSmoother
+from skimage.feature import hog
 
 # 1. Tải cấu hình và mô hình đã huấn luyện
 CONFIG_PATH = Path("config/parking_config.json")
@@ -24,24 +26,6 @@ FRAME_CSV_PATH = RUN_DIR / "frame_statistics.csv"
 SLOT_CSV_PATH = RUN_DIR / "slot_predictions.csv"
 CONFIG_COPY_PATH = RUN_DIR / "run_config.json"
 
-class SlotSmoother:
-    """Lớp làm mượt trạng thái qua các frame sử dụng thuật toán Majority Vote (Stage 9)"""
-    def __init__(self, window_size=5):
-        self.history = {}
-        self.window_size = window_size
-
-    def update(self, slot_id, label):
-        if slot_id not in self.history:
-            self.history[slot_id] = deque(maxlen=self.window_size)
-        self.history[slot_id].append(label)
-        
-        counts = Counter(self.history[slot_id])
-        return counts.most_common(1)[0][0]
-
-def load_config():
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
-
 class ParkingPredictor:
     def __init__(self, model_path):
         if str(model_path).endswith(".keras"):
@@ -51,42 +35,81 @@ class ParkingPredictor:
             self.model = joblib.load(model_path)
             self.is_cnn = False
 
-    def predict_slots(self, frame, boxes):
+    @staticmethod
+    def preprocess_cnn_crop(crop):
+        resized = cv2.resize(crop, (64, 64))
+        resized = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+        # The trained CNN contains its own Rescaling(1/255) layer.
+        return resized.astype(np.float32)
+
+    def predict_slots(self, frame, slot_manager):
         """Dự đoán trạng thái từng slot kết hợp kiểm tra ngưỡng Confidence (Stage 10) kèm giá trị confidence"""
         predictions = {}
         confidences = {}
-        for box in boxes:
-            box_id = box["id"]
-            x, y, w, h = box["x"], box["y"], box["width"], box["height"]
-            
-            slot_crop = frame[y:y+h, x:x+w]
+        cnn_crops = []
+        cnn_box_ids = []
+
+        for item in slot_manager.crop_slots(frame):
+            box_id = item["id"]
+            slot_crop = item["crop"]
             if slot_crop.size == 0:
                 predictions[box_id] = "invalid"
                 confidences[box_id] = 0.0
                 continue
-                
+
+            if self.is_cnn:
+                cnn_crops.append(self.preprocess_cnn_crop(slot_crop))
+                cnn_box_ids.append(box_id)
+                continue
+
             try:
                 resized = cv2.resize(slot_crop, (64, 64))
-                if self.is_cnn:
-                    input_data = np.expand_dims(resized / 255.0, axis=0)
-                    pred_prob = self.model.predict(input_data, verbose=0)[0][0]
-                    
-                    confidence = float(max(pred_prob, 1 - pred_prob))
-                    confidences[box_id] = confidence
-                    
-                    if confidence < 0.60:
-                        status = "unknown"
-                    else:
-                        status = "occupied" if pred_prob > 0.5 else "empty"
+                gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+                features = hog(
+                    gray,
+                    orientations=9,
+                    pixels_per_cell=(8, 8),
+                    cells_per_block=(2, 2),
+                    block_norm="L2-Hys",
+                    visualize=False,
+                ).reshape(1, -1)
+                raw_label = self.model.predict(features)[0]
+                if hasattr(self.model, "predict_proba"):
+                    probabilities = self.model.predict_proba(features)[0]
+                    pred_prob = float(probabilities[1])
                 else:
-                    status = "empty"
-                    confidences[box_id] = 1.0
-                
+                    decision = float(self.model.decision_function(features)[0])
+                    pred_prob = 1.0 / (1.0 + np.exp(-decision))
+
+                confidence = max(pred_prob, 1.0 - pred_prob)
+                confidences[box_id] = confidence
+                if confidence < 0.60:
+                    status = "unknown"
+                else:
+                    status = (
+                        "occupied"
+                        if str(raw_label).lower() in {"1", "not_empty", "occupied", "car"}
+                        else "empty"
+                    )
                 predictions[box_id] = status
             except Exception:
                 predictions[box_id] = "error"
                 confidences[box_id] = 0.0
-                
+
+        if cnn_crops:
+            batch = np.stack(cnn_crops, axis=0)
+            probabilities = self.model.predict(batch, verbose=0).reshape(-1)
+            for box_id, probability in zip(cnn_box_ids, probabilities):
+                probability = float(probability)
+                confidence = max(probability, 1.0 - probability)
+                confidences[box_id] = confidence
+                if confidence < 0.60:
+                    predictions[box_id] = "unknown"
+                elif probability > 0.5:
+                    predictions[box_id] = "occupied"
+                else:
+                    predictions[box_id] = "empty"
+
         return predictions, confidences
 
 def calculate_statistics(predictions):
@@ -120,12 +143,12 @@ def calculate_statistics(predictions):
         "occupancy_rate": occupancy_rate
     }
 
-def draw_renderer(frame, boxes, predictions, stats):
+def draw_renderer(frame, slot_manager, predictions, stats):
     output_frame = frame.copy()
     
-    for box in boxes:
-        box_id = box["id"]
-        x, y, w, h = box["x"], box["y"], box["width"], box["height"]
+    for item in slot_manager.crop_slots(frame):
+        box_id = item["id"]
+        x, y, w, h = item["box"]
         status = predictions.get(box_id, "unknown")
         
         if status == "empty":
@@ -147,9 +170,9 @@ def draw_renderer(frame, boxes, predictions, stats):
     return output_frame
 
 def main():
-    config = load_config()
-    boxes = config.get("boxes", [])
-    total_slots = len(boxes)
+    slot_manager = SlotManager(CONFIG_PATH)
+    config = slot_manager.config
+    total_slots = len(slot_manager.slots)
     camera_id = config.get("camera_id", "camera_01")
     
     # Sao lưu config chạy vào thư mục kết quả
@@ -166,15 +189,18 @@ def main():
     fps = capture.get(cv2.CAP_PROP_FPS)
     
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    if not fps or fps <= 0:
+        fps = 25.0
     writer = cv2.VideoWriter(str(OUTPUT_VIDEO_PATH), fourcc, fps, (width, height))
     
     detector = ParkingPredictor(MODEL_CNN_PATH)
-    smoother = SlotSmoother(window_size=5)
+    smoother = SlotSmoother(window_size=7, min_stable_count=5)
     
     print(f"=== BẮT ĐẦU CHẠY INFERENCE VÀ LƯU BÁO CÁO TẠI: {RUN_DIR} ===")
     
     frame_index = 0
     all_frame_stats = []
+    previous_predictions = {}
     
     # Khởi tạo ghi file CSV cho slot predictions
     with open(SLOT_CSV_PATH, mode="w", newline="", encoding="utf-8") as slot_file:
@@ -193,16 +219,29 @@ def main():
                 timestamp = round(frame_index / fps, 2)
                 
                 # 1. Dự đoán thô & confidence
-                raw_predictions, confidences = detector.predict_slots(frame, boxes)
+                raw_predictions, confidences = detector.predict_slots(frame, slot_manager)
                 
                 # 2. Temporal Smoothing
                 smoothed_predictions = {}
                 for box_id, raw_status in raw_predictions.items():
-                    smoothed_status = smoother.update(box_id, raw_status)
+                    smoothed_status = smoother.update(
+                        box_id,
+                        raw_status,
+                        confidence=confidences.get(box_id),
+                    )
                     smoothed_predictions[box_id] = smoothed_status
-                    
-                    # Ghi nhận vào slot_predictions.csv
-                    slot_writer.writerow([frame_index + 1, box_id, smoothed_status, round(confidences.get(box_id, 0.0), 2)])
+
+                    if previous_predictions.get(box_id) != smoothed_status:
+                        slot_writer.writerow(
+                            [
+                                frame_index + 1,
+                                box_id,
+                                smoothed_status,
+                                round(confidences.get(box_id, 0.0), 2),
+                            ]
+                        )
+
+                    previous_predictions[box_id] = smoothed_status
                 
                 # 3. Tính toán thống kê
                 stats = calculate_statistics(smoothed_predictions)
@@ -218,7 +257,7 @@ def main():
                 all_frame_stats.append(stats)
                 
                 # 4. Render và ghi video
-                output_frame = draw_renderer(frame, boxes, smoothed_predictions, stats)
+                output_frame = draw_renderer(frame, slot_manager, smoothed_predictions, stats)
                 writer.write(output_frame)
                 
                 frame_index += 1

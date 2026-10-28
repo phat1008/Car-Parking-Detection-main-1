@@ -1,90 +1,156 @@
 import json
-import os
-import cv2
+from pathlib import Path
 
-def validate_slot(slot_data, frame_width=None, frame_height=None, seen_ids=None):
-    """
-    Kiểm tra tính hợp lệ của 1 slot dictionary.
-    Ném ra Exception với thông báo rõ ràng nếu cấu hình sai.
-    """
-    required_keys = ["id", "x", "y", "width", "height"]
-    for key in required_keys:
-        if key not in slot_data:
-            raise ValueError(f"Thiếu trường bắt buộc '{key}' trong slot: {slot_data}")
 
-    slot_id = slot_data["id"]
+class SlotManager:
+    def __init__(self, config_path):
+        self.config_path = Path(config_path)
 
-    # 1. Kiểm tra ID trùng lặp
-    if seen_ids is not None:
-        if slot_id in seen_ids:
-            raise ValueError(f"ID slot bị trùng lặp: {slot_id}")
-        seen_ids.add(slot_id)
-
-    x, y = slot_data["x"], slot_data["y"]
-    w, h = slot_data["width"], slot_data["height"]
-
-    # 2. Kiểm tra tọa độ âm
-    if x < 0 or y < 0:
-        raise ValueError(f"Slot ID {slot_id} có tọa độ âm: (x={x}, y={y})")
-
-    # 3. Kiểm tra kích thước lớn hơn 0
-    if w <= 0 or h <= 0:
-        raise ValueError(f"Slot ID {slot_id} có kích thước không hợp lệ: (width={w}, height={h})")
-
-    # 4. Kiểm tra ô có vượt quá kích thước frame hay không (nếu có truyền kích thước frame)
-    if frame_width is not None and frame_height is not None:
-        if x + w > frame_width or y + h > frame_height:
-            raise ValueError(
-                f"Slot ID {slot_id} vượt quá kích thước frame! "
-                f"Slot bounds: (x_max={x+w}, y_max={y+h}), Frame: ({frame_width}x{frame_height})"
+        if not self.config_path.exists():
+            raise FileNotFoundError(
+                f"Không tìm thấy file config: {self.config_path}"
             )
 
-    return True
+        with self.config_path.open("r", encoding="utf-8") as file:
+            self.config = json.load(file)
 
+        self.source_width = int(self.config["source_width"])
+        self.source_height = int(self.config["source_height"])
+        self.camera_id = self.config.get("camera_id", "camera_01")
 
-def load_slots(json_path, frame_width=None, frame_height=None):
-    """
-    Đọc file JSON cấu hình và trả về danh sách các slot đã qua kiểm tra.
-    Hỗ trợ trường 'enabled' (chỉ trả về các slot có enabled == True).
-    """
-    if not os.path.exists(json_path):
-        raise FileNotFoundError(f"Không tìm thấy file cấu hình: {json_path}")
+        self.slots = self._validate_slots(
+            self.config.get("boxes", [])
+        )
 
-    with open(json_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    def _validate_slots(self, raw_slots):
+        seen_ids = set()
+        valid_slots = []
 
-    # Lấy thông số frame từ file config nếu không truyền vào
-    if frame_width is None:
-        frame_width = data.get("source_width")
-    if frame_height is None:
-        frame_height = data.get("source_height")
+        for index, slot in enumerate(raw_slots):
+            required_keys = [
+                "id",
+                "x",
+                "y",
+                "width",
+                "height",
+            ]
 
-    raw_boxes = data.get("boxes", [])
-    valid_slots = []
-    seen_ids = set()
+            missing_keys = [
+                key for key in required_keys
+                if key not in slot
+            ]
 
-    for idx, box in enumerate(raw_boxes):
-        try:
-            validate_slot(box, frame_width, frame_height, seen_ids)
-            # 5. Hỗ trợ enabled: true/false (mặc định là True nếu không khai báo)
-            if box.get("enabled", True):
-                valid_slots.append(box)
-        except ValueError as e:
-            # 6. In lỗi rõ ràng khi config sai
-            print(f"[ERROR CONFIG] Lỗi tại phần tử thứ {idx}: {e}")
-            raise e
+            if missing_keys:
+                raise ValueError(
+                    f"Slot index {index} thiếu: {missing_keys}"
+                )
 
-    return valid_slots
+            slot_id = slot["id"]
 
+            if slot_id in seen_ids:
+                raise ValueError(
+                    f"ID slot bị trùng: {slot_id}"
+                )
 
-def get_slot_crop(frame, slot):
-    """
-    Cắt vùng ảnh (crop) của slot từ frame dựa trên thông tin dict slot.
-    """
-    x = int(slot["x"])
-    y = int(slot["y"])
-    w = int(slot["width"])
-    h = int(slot["height"])
+            seen_ids.add(slot_id)
 
-    crop = frame[y:y+h, x:x+w]
-    return crop
+            x = slot["x"]
+            y = slot["y"]
+            width = slot["width"]
+            height = slot["height"]
+
+            if not all(
+                isinstance(value, (int, float))
+                for value in [x, y, width, height]
+            ):
+                raise ValueError(
+                    f"Slot {slot_id} có tọa độ/kích thước không phải số"
+                )
+
+            if x < 0 or y < 0:
+                raise ValueError(
+                    f"Slot {slot_id} có tọa độ âm"
+                )
+
+            if width <= 0 or height <= 0:
+                raise ValueError(
+                    f"Slot {slot_id} có kích thước không hợp lệ"
+                )
+
+            if x + width > self.source_width:
+                raise ValueError(
+                    f"Slot {slot_id} vượt source_width"
+                )
+
+            if y + height > self.source_height:
+                raise ValueError(
+                    f"Slot {slot_id} vượt source_height"
+                )
+
+            if slot.get("enabled", True):
+                valid_slots.append(slot)
+
+        if not valid_slots:
+            raise ValueError(
+                "Config không có parking slot enabled"
+            )
+
+        return valid_slots
+
+    def scaled_box(
+        self,
+        slot,
+        frame_width,
+        frame_height,
+    ):
+        scale_x = frame_width / self.source_width
+        scale_y = frame_height / self.source_height
+
+        x = round(slot["x"] * scale_x)
+        y = round(slot["y"] * scale_y)
+        width = round(slot["width"] * scale_x)
+        height = round(slot["height"] * scale_y)
+
+        x = max(0, min(x, frame_width))
+        y = max(0, min(y, frame_height))
+
+        width = max(
+            0,
+            min(width, frame_width - x),
+        )
+
+        height = max(
+            0,
+            min(height, frame_height - y),
+        )
+
+        return x, y, width, height
+
+    def crop_slots(self, frame):
+        frame_height, frame_width = frame.shape[:2]
+        slot_items = []
+
+        for slot in self.slots:
+            box = self.scaled_box(
+                slot,
+                frame_width,
+                frame_height,
+            )
+
+            x, y, width, height = box
+
+            crop = frame[
+                y:y + height,
+                x:x + width,
+            ]
+
+            slot_items.append(
+                {
+                    "id": slot["id"],
+                    "box": box,
+                    "crop": crop,
+                    "type": slot.get("type", "regular"),
+                }
+            )
+
+        return slot_items

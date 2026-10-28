@@ -15,6 +15,36 @@ base_frame = None
 scale_percent = 100  # Sẽ được tính tự động bên dưới
 orig_w, orig_h = 0, 0
 
+
+def renumber_boxes():
+    for box_id, box in enumerate(current_boxes):
+        box["id"] = box_id
+
+
+def save_config():
+    config_data = {
+        "camera_id": "camera_01",
+        "source_width": orig_w,
+        "source_height": orig_h,
+        "boxes": current_boxes,
+    }
+
+    error = validate_config(config_data)
+    if error:
+        print(f"[Lỗi Validate]: {error}")
+        return False
+
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    temporary_path = CONFIG_PATH.with_suffix(".json.tmp")
+    with temporary_path.open("w", encoding="utf-8") as file:
+        json.dump(config_data, file, indent=4, ensure_ascii=False)
+    temporary_path.replace(CONFIG_PATH)
+    print(
+        f"[Thành công] Đã lưu {len(current_boxes)} vùng đỗ xe vào "
+        f"{CONFIG_PATH}"
+    )
+    return True
+
 def validate_config(config_data):
     """Validate cấu hình box theo đúng tiêu chuẩn yêu cầu trước khi lưu"""
     width = config_data.get("source_width", 0)
@@ -56,6 +86,8 @@ def mouse_callback(event, x, y, flags, param):
     # Quy đổi tọa độ từ màn hình hiển thị (đã scale) về kích thước ảnh gốc
     orig_x = int(x * (100 / scale_percent))
     orig_y = int(y * (100 / scale_percent))
+    orig_x = max(0, min(orig_x, orig_w - 1))
+    orig_y = max(0, min(orig_y, orig_h - 1))
     
     if event == cv2.EVENT_LBUTTONDOWN:
         drawing = True
@@ -169,7 +201,8 @@ def main():
                             "y": box["y"],
                             "width": box["width"],
                             "height": box["height"],
-                            "type": box.get("type", "regular")
+                            "type": box.get("type", "regular"),
+                            "enabled": box.get("enabled", True),
                         })
                     elif isinstance(box, list) and len(box) >= 4:
                         current_boxes.append({
@@ -199,37 +232,20 @@ def main():
     
     while True:
         key = cv2.waitKey(1) & 0xFF
-        if key == ord('s'):
-            # Đảm bảo ID liên tục theo thứ tự
-            for idx, box in enumerate(current_boxes):
-                box["id"] = idx
-                
-            config_data = {
-                "camera_id": "camera_01",
-                "source_width": orig_w,
-                "source_height": orig_h,
-                "boxes": current_boxes
-            }
-            
-            # Validate trước khi lưu
-            error = validate_config(config_data)
-            if error:
-                print(f"[Lỗi Validate]: {error}")
-            else:
-                with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-                    json.dump(config_data, f, indent=4)
-                print(f"[Thành công] Đã validate và lưu {len(current_boxes)} vùng đỗ xe vào {CONFIG_PATH}")
-                
-        elif key == ord('z'):
+        if key == ord("s"):
+            renumber_boxes()
+            save_config()
+        elif key == ord("z"):
             if current_boxes:
                 removed = current_boxes.pop()
                 print(f"Đã xóa Box ID {removed['id']}")
+                renumber_boxes()
                 update_display()
-        elif key == ord('r'):
+        elif key == ord("r"):
             current_boxes.clear()
             print("Đã xóa toàn bộ các vùng đỗ xe.")
             update_display()
-        elif key == ord('q'):
+        elif key == ord("q"):
             print("Đang thoát chương trình...")
             break
             

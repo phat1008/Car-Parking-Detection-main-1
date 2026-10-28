@@ -11,10 +11,12 @@ def test_parking_counter_standard():
     
     counts = ParkingCounter.count_slots(results)
     
-    assert counts["total"] == 3
+    assert counts["configured"] == 4
+    assert counts["valid"] == 3
     assert counts["empty"] == 1
     assert counts["occupied"] == 1
     assert counts["unknown"] == 1
+    assert counts["invalid"] == 1
 
 def test_parking_counter_with_disabled_slots():
     results = [
@@ -29,6 +31,7 @@ def test_parking_counter_with_disabled_slots():
     
     counts = ParkingCounter.count_slots(results, slots_config)
     
-    assert counts["total"] == 1
+    assert counts["configured"] == 1
+    assert counts["valid"] == 1
     assert counts["empty"] == 1
     assert counts["occupied"] == 0

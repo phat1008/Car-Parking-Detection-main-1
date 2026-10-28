@@ -1,9 +1,10 @@
 import logging
-import pickle
 from pathlib import Path
 
 import cv2
+import joblib
 import numpy as np
+from skimage.feature import hog
 
 # Cấu hình logging để ghi log khi model không tồn tại hoặc lỗi
 logging.basicConfig(level=logging.INFO)
@@ -14,7 +15,7 @@ class ParkingClassifier:
     def __init__(self, model_path, confidence_threshold=0.6):
         """
         Khởi tạo bộ phân loại ô đỗ xe.
-        :param model_path: Đường dẫn tới file model pickle (.p / .pkl)
+        :param model_path: Đường dẫn tới file model joblib (.joblib)
         :param confidence_threshold: Ngưỡng confidence tối thiểu (dưới mức này trả về 'unknown')
         """
         self.model_path = Path(model_path)
@@ -22,16 +23,15 @@ class ParkingClassifier:
         self.model = self._load_model()
 
     def _load_model(self):
-        """Load a compatible pickle model or fail fast with an actionable error."""
+        """Load a compatible HOG model or fail fast with an actionable error."""
         if not self.model_path.exists():
             raise FileNotFoundError(
                 f"Không tìm thấy file model tại đường dẫn: {self.model_path}"
             )
 
         try:
-            with self.model_path.open("rb") as file:
-                model = pickle.load(file)
-        except (OSError, pickle.PickleError, EOFError, ImportError, AttributeError) as exc:
+            model = joblib.load(self.model_path)
+        except (OSError, EOFError, ImportError, AttributeError, ValueError) as exc:
             raise RuntimeError(
                 f"Không thể load model {self.model_path}: {exc}"
             ) from exc
@@ -46,22 +46,27 @@ class ParkingClassifier:
 
     def preprocess(self, crop):
         """
-        1. Giữ nguyên preprocessing (Resize 15x15, chuẩn hóa 0-1, flatten vector)
-        để không làm sai lệch mô hình đã train.
+        Resize ảnh về kích thước của pipeline HOG rồi trích xuất đặc trưng
+        grayscale giống scripts/train_svm.py.
         """
         if crop is None or crop.size == 0:
             raise ValueError("Empty parking-space crop")
 
-        crop = cv2.resize(
+        resized = cv2.resize(
             crop,
-            (15, 15),
+            (64, 64),
             interpolation=cv2.INTER_AREA,
         )
-
-        crop = crop.astype(np.float32) / 255.0
-        features = crop.reshape(1, -1)
-
-        return features
+        gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+        features = hog(
+            gray,
+            orientations=9,
+            pixels_per_cell=(8, 8),
+            cells_per_block=(2, 2),
+            block_norm="L2-Hys",
+            visualize=False,
+        )
+        return features.reshape(1, -1)
 
     def predict(self, crop):
         """
