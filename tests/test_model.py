@@ -47,9 +47,7 @@ def test_decode_probability_maps_classes_and_uncertainty():
     assert uncertain["confidence"] == 0.5
 
 
-def test_predict_batch_keeps_results_aligned_and_marks_invalid_crops(
-    tmp_path, monkeypatch
-):
+def test_predict_batch_keeps_results_aligned_and_marks_invalid_crops(tmp_path, monkeypatch):
     """Check batched inference retains input order and does not infer for empty crops."""
     classifier = create_classifier(tmp_path, monkeypatch)
     crops = [

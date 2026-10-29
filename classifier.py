@@ -25,21 +25,15 @@ class ParkingClassifier:
     def _load_model(self):
         """Load a compatible HOG model or fail fast with an actionable error."""
         if not self.model_path.exists():
-            raise FileNotFoundError(
-                f"Không tìm thấy file model tại đường dẫn: {self.model_path}"
-            )
+            raise FileNotFoundError(f"Không tìm thấy file model tại đường dẫn: {self.model_path}")
 
         try:
             model = joblib.load(self.model_path)
         except (OSError, EOFError, ImportError, AttributeError, ValueError) as exc:
-            raise RuntimeError(
-                f"Không thể load model {self.model_path}: {exc}"
-            ) from exc
+            raise RuntimeError(f"Không thể load model {self.model_path}: {exc}") from exc
 
         if not hasattr(model, "predict"):
-            raise TypeError(
-                f"Model {self.model_path} không hợp lệ: thiếu phương thức predict"
-            )
+            raise TypeError(f"Model {self.model_path} không hợp lệ: thiếu phương thức predict")
 
         logger.info(f"[INFO] Tải thành công model từ {self.model_path}")
         return model

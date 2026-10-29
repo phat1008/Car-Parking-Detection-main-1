@@ -40,9 +40,7 @@ def test_video_groups_do_not_leak_between_dataset_splits(class_name):
     for split in SPLITS:
         class_dir = DATA_ROOT / split / class_name
         assert class_dir.is_dir(), f"Missing dataset folder: {class_dir}"
-        groups_by_split[split] = {
-            path.stem.split("_")[0] for path in image_files(class_dir)
-        }
+        groups_by_split[split] = {path.stem.split("_")[0] for path in image_files(class_dir)}
 
     for index, split in enumerate(SPLITS):
         for other_split in SPLITS[index + 1 :]:

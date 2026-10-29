@@ -65,9 +65,7 @@ def create_config(path):
     return path
 
 
-def test_classify_frame_crops_enabled_slots_and_preserves_metadata(
-    tmp_path, monkeypatch
-):
+def test_classify_frame_crops_enabled_slots_and_preserves_metadata(tmp_path, monkeypatch):
     """Verify frame classification scales boxes, skips disabled slots, and returns metadata."""
     monkeypatch.setattr(parking_detector, "CNNParkingClassifier", StubClassifier)
     config_path = create_config(tmp_path / "parking.json")

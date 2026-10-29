@@ -1,5 +1,5 @@
-import pytest
 from src.smoother import SlotSmoother
+
 
 def test_slot_smoother_stability():
     # Cửa sổ 7, cần 5 lần liên tiếp để đổi trạng thái
@@ -9,10 +9,10 @@ def test_slot_smoother_stability():
     # Ban đầu slot là empty, cấp 4 frame occupied (chưa đủ 5) -> phải giữ empty
     for _ in range(4):
         state = smoother.update(slot_id, "occupied", confidence=0.9)
-    
-    # Do chưa đủ 5 frame liên tiếp, trạng thái ổn định vẫn phải là "occupied" hoặc giữ lịch sử ban đầu 
+
+    # Do chưa đủ 5 frame liên tiếp, trạng thái ổn định vẫn phải là "occupied" hoặc giữ lịch sử ban đầu
     # (Tùy thuộc vào khởi tạo, ở đây chuỗi toàn occupied nên stable_state sẽ chuyển thành occupied sau khi đủ)
-    
+
     # Thêm frame thứ 5 occupied -> đủ điều kiện đổi sang occupied
     state = smoother.update(slot_id, "occupied", confidence=0.9)
     assert state == "occupied"
