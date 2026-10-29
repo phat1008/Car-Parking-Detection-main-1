@@ -17,11 +17,18 @@ class CNNParkingClassifier:
         self.confidence_threshold = confidence_threshold
 
         if not self.model_path.exists():
-            raise FileNotFoundError(
-                f"Không tìm thấy model CNN: {self.model_path}"
-            )
+            raise FileNotFoundError(f"Không tìm thấy model CNN: {self.model_path}")
 
         self.model = tf.keras.models.load_model(self.model_path)
+        self._predict_batch = tf.function(
+            lambda batch: self.model(batch, training=False),
+            input_signature=[
+                tf.TensorSpec(
+                    shape=(None, *self.image_size, 3),
+                    dtype=tf.float32,
+                )
+            ],
+        )
 
     def preprocess(self, crop):
         if crop is None or crop.size == 0:
@@ -73,10 +80,7 @@ class CNNParkingClassifier:
         image = self.preprocess(crop)
         batch = np.expand_dims(image, axis=0)
 
-        probability = self.model.predict(
-            batch,
-            verbose=0,
-        )[0][0]
+        probability = self._predict_batch(batch).numpy()[0][0]
 
         return self._decode_probability(probability)
 
@@ -107,10 +111,7 @@ class CNNParkingClassifier:
 
         batch = np.stack(valid_images, axis=0)
 
-        probabilities = self.model.predict(
-            batch,
-            verbose=0,
-        ).reshape(-1)
+        probabilities = self._predict_batch(batch).numpy().reshape(-1)
 
         for index, probability in zip(valid_indices, probabilities):
             results[index] = self._decode_probability(probability)

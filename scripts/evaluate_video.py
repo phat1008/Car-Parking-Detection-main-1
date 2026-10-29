@@ -1,73 +1,136 @@
-import pandas as pd
-from pathlib import Path
+import argparse
 import json
+from pathlib import Path
 
-def evaluate_video():
-    # Đường dẫn file Ground Truth (do bạn tạo thủ công các frame đại diện) và file Prediction hệ thống xuất ra
-    gt_path = Path("reports/ground_truth.csv")
-    pred_path = Path("reports/runs/latest_run/slot_predictions.csv") # Hoặc trỏ tới thư mục chạy gần nhất của bạn
-    
-    # Tìm tự động file slot_predictions.csv mới nhất trong reports/runs/ nếu có
-    runs_dir = Path("reports/runs")
-    if runs_dir.exists():
-        subdirs = sorted([d for d in runs_dir.iterdir() if d.is_dir()], key=lambda x: x.stat().st_mtime, reverse=True)
-        if subdirs:
-            pred_path = subdirs[0] / "slot_predictions.csv"
+import pandas as pd
 
-    if not gt_path.exists():
-        print(f"[Cảnh báo] Chưa tìm thấy file Ground Truth tại: {gt_path}")
-        print("Vui lòng tạo file ground_truth.csv với các cột: frame, slot_id, label trước khi chạy đánh giá!")
-        return
 
-    if not pred_path.exists():
-        print(f"[Lỗi] Không tìm thấy file dự đoán tại: {pred_path}. Hãy chạy run_inference.py trước.")
-        return
+def latest_prediction_csv(runs_dir):
+    candidates = sorted(
+        (path for path in runs_dir.glob("*/slot_predictions.csv") if path.is_file()),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not candidates:
+        raise FileNotFoundError(f"No slot_predictions.csv found under {runs_dir}")
+    return candidates[0]
 
+
+def normalize_labels(labels):
+    return (
+        labels.astype(str)
+        .str.strip()
+        .str.lower()
+        .replace({"not_empty": "occupied", "car": "occupied"})
+    )
+
+
+def evaluate_video(gt_path, pred_path):
     df_gt = pd.read_csv(gt_path)
     df_pred = pd.read_csv(pred_path)
 
-    # Gộp 2 DataFrame dựa trên frame và slot_id
-    merged = pd.merge(df_gt, df_pred, on=["frame", "slot_id"], suffixes=("_gt", "_pred"))
+    required_gt = {"frame", "slot_id", "label"}
+    missing_gt = required_gt.difference(df_gt.columns)
+    if missing_gt:
+        raise ValueError(f"Ground truth CSV is missing columns: {sorted(missing_gt)}")
+
+    pred_label_column = "stable_state" if "stable_state" in df_pred.columns else "label"
+    required_pred = {"frame", "slot_id", pred_label_column}
+    missing_pred = required_pred.difference(df_pred.columns)
+    if missing_pred:
+        raise ValueError(f"Prediction CSV is missing columns: {sorted(missing_pred)}")
+
+    key_columns = ["frame", "slot_id"]
+    if df_gt.duplicated(key_columns).any():
+        raise ValueError("Ground truth CSV has duplicate frame/slot_id rows")
+    if df_pred.duplicated(key_columns).any():
+        raise ValueError("Prediction CSV has duplicate frame/slot_id rows")
+
+    ground_truth = df_gt[key_columns + ["label"]].rename(columns={"label": "label_gt"})
+    predictions = df_pred[key_columns + [pred_label_column]].rename(
+        columns={pred_label_column: "label_pred"}
+    )
+    merged = pd.merge(
+        ground_truth,
+        predictions,
+        on=key_columns,
+        how="inner",
+        validate="one_to_one",
+    )
 
     if merged.empty:
-        print("[Lỗi] Không khớp frame hoặc slot_id nào giữa Ground Truth và Prediction!")
-        return
+        raise ValueError(
+            "No matching frame/slot_id rows between ground truth and predictions"
+        )
 
-    # Chuẩn hóa nhãn (đảm bảo 'not_empty' tương đương 'occupied')
-    merged['label_gt'] = merged['label_gt'].replace({'not_empty': 'occupied'})
-    merged['label_pred'] = merged['label_pred'].replace({'not_empty': 'occupied'})
+    merged["label_gt"] = normalize_labels(merged["label_gt"])
+    merged["label_pred"] = normalize_labels(merged["label_pred"])
 
-    # Tính toán các metric
     total_samples = len(merged)
-    correct_predictions = (merged['label_gt'] == merged['label_pred']).sum()
-    slot_accuracy = correct_predictions / total_samples if total_samples > 0 else 0.0
+    correct_predictions = (merged["label_gt"] == merged["label_pred"]).sum()
+    total_occupied_gt = (merged["label_gt"] == "occupied").sum()
+    total_empty_gt = (merged["label_gt"] == "empty").sum()
+    false_empty = (
+        (merged["label_gt"] == "occupied") & (merged["label_pred"] == "empty")
+    ).sum()
+    false_occupied = (
+        (merged["label_gt"] == "empty") & (merged["label_pred"] == "occupied")
+    ).sum()
 
-    # False Empty: Thực tế là occupied nhưng dự đoán là empty
-    false_empty = ((merged['label_gt'] == 'occupied') & (merged['label_pred'] == 'empty')).sum()
-    total_occupied_gt = (merged['label_gt'] == 'occupied').sum()
-    false_empty_rate = false_empty / total_occupied_gt if total_occupied_gt > 0 else 0.0
-
-    # False Occupied: Thực tế là empty nhưng dự đoán là occupied
-    false_occupied = ((merged['label_gt'] == 'empty') & (merged['label_pred'] == 'occupied')).sum()
-    total_empty_gt = (merged['label_gt'] == 'empty').sum()
-    false_occupied_rate = false_occupied / total_empty_gt if total_empty_gt > 0 else 0.0
-
-    metrics_result = {
+    return {
         "total_evaluated_samples": int(total_samples),
-        "slot_accuracy": round(float(slot_accuracy), 4),
-        "false_empty_rate": round(float(false_empty_rate), 4),
-        "false_occupied_rate": round(float(false_occupied_rate), 4)
+        "slot_accuracy": round(float(correct_predictions / total_samples), 4),
+        "false_empty_rate": round(
+            float(false_empty / total_occupied_gt) if total_occupied_gt else 0.0,
+            4,
+        ),
+        "false_occupied_rate": round(
+            float(false_occupied / total_empty_gt) if total_empty_gt else 0.0,
+            4,
+        ),
     }
 
-    print("=== KẾT QUẢ ĐÁNH GIÁ VIDEO (VIDEO METRICS) ===")
-    for k, v in metrics_result.items():
-        print(f" - {k}: {v}")
 
-    output_metrics_path = Path("reports/metrics/video_evaluation_metrics.json")
-    output_metrics_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_metrics_path, "w", encoding="utf-8") as f:
-        json.dump(metrics_result, f, indent=4)
-    print(f"\n[Thành công] Đã lưu báo cáo đánh giá video tại: {output_metrics_path}")
+def main():
+    parser = argparse.ArgumentParser(
+        description="Evaluate parking-slot predictions against video ground truth"
+    )
+    parser.add_argument(
+        "--ground-truth",
+        type=Path,
+        default=Path("reports/ground_truth.csv"),
+    )
+    parser.add_argument(
+        "--predictions",
+        type=Path,
+        help="Prediction CSV; defaults to the newest reports/runs/*/slot_predictions.csv",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("reports/metrics/video_evaluation_metrics.json"),
+    )
+    args = parser.parse_args()
+
+    if not args.ground_truth.is_file():
+        raise FileNotFoundError(f"Ground truth CSV not found: {args.ground_truth}")
+
+    pred_path = args.predictions or latest_prediction_csv(Path("reports/runs"))
+    if not pred_path.is_file():
+        raise FileNotFoundError(f"Prediction CSV not found: {pred_path}")
+
+    metrics_result = evaluate_video(args.ground_truth, pred_path)
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("w", encoding="utf-8") as file:
+        json.dump(metrics_result, file, indent=4)
+
+    print(f"Evaluated predictions: {pred_path}")
+    print("=== VIDEO EVALUATION ===")
+    for key, value in metrics_result.items():
+        print(f" - {key}: {value}")
+    print(f"Metrics saved to: {args.output}")
+
 
 if __name__ == "__main__":
-    evaluate_video()
+    main()

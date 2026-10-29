@@ -40,6 +40,9 @@ venv.bak/
 Include/
 Lib/
 Scripts/
+!scripts/
+scripts/*
+!scripts/run.py
 pyvenv.cfg
 share/
 
