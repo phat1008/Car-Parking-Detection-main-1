@@ -129,14 +129,14 @@ def draw_grid_ui():
             (x, y),
             (x + width, y + height),
             color,
-            2,
+            1,
         )
         cv2.putText(
             preview,
             f"ID:{box['id']}",
             (x, max(y - 5, 15)),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
+            0.30,
             color,
             1,
             cv2.LINE_AA,
@@ -147,9 +147,9 @@ def draw_grid_ui():
         f"Total Slots: {len(boxes)}",
         (20, 40),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
+        0.30,
         (0, 255, 255),
-        2,
+        1,
         cv2.LINE_AA,
     )
     instructions = (
@@ -193,7 +193,7 @@ def mouse_callback(event, x, y, flags, param):
             (round(ix * scale_x), round(iy * scale_y)),
             (round(end_x * scale_x), round(end_y * scale_y)),
             (0, 165, 255),
-            2,
+            1,
         )
         cv2.imshow(WINDOW_NAME, preview)
     elif event == cv2.EVENT_LBUTTONUP and drawing:

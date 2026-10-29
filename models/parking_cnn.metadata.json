@@ -13,10 +13,10 @@
   "positive_class": "not_empty",
   "production_threshold": 0.6,
   "test_metrics": {
-    "accuracy": 1.0,
-    "auc": 1.0000001192092896,
-    "loss": 0.005099664442241192,
+    "accuracy": 0.9969087839126587,
+    "auc": 0.9999904632568359,
+    "loss": 0.0082069868221879,
     "precision": 1.0,
-    "recall": 1.0
+    "recall": 0.9938080310821533
   }
 }
