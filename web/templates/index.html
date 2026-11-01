@@ -197,8 +197,7 @@ function showHistoryRecord(record) {
     + " — " + when
     + " — trống " + record.counts.empty + ", có xe " + record.counts.occupied
     + ", không chắc chắn " + record.counts.unknown
-    + (record.availability !== undefined && record.availability !== ""
-        ? ", tỷ lệ trống " + (record.availability * 100).toFixed(1) + "%" : "");
+    + (record.counts.empty + record.counts.occupied > 0 ? ", tỷ lệ trống " + ((record.counts.empty / (record.counts.empty + record.counts.occupied)) * 100).toFixed(1) + "%" : "");
   detail.appendChild(title);
 
   const mapEl = document.createElement("div");

@@ -217,12 +217,8 @@ def create_app(detector=None, store=None):
     def summary(
         counts, results, processed_frames=1, processed_inferences=1, inference_interval=None
     ):
-        empty, occupied = counts.get("empty", 0), counts.get("occupied", 0)
         return {
-            "schema_version": 2,
             "counts": counts,
-            "availability": availability(empty, occupied),
-            "column_stats": column_stats(results),
             "slots": slot_list(results),
             "processed_frames": processed_frames,
             "processed_inferences": processed_inferences,
