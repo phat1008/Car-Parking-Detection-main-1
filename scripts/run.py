@@ -81,7 +81,7 @@ def draw_slot_id(output, slot_id, box):
     (text_width, text_height), baseline = cv2.getTextSize(
         text,
         font,
-        0.5,
+        0.3,
         1,
     )
     label_x = max(0, min(x + 2, image_width - text_width - 1))
@@ -94,7 +94,7 @@ def draw_slot_id(output, slot_id, box):
         text,
         (label_x, text_y),
         font,
-        0.5,
+        0.3,
         (255, 255, 255),
         1,
         cv2.LINE_AA,

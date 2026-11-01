@@ -80,7 +80,7 @@ def test_draw_results_shows_small_white_slot_id_without_background(monkeypatch):
 
     id_label = next(call for call in labels if call[1] == "104")
     assert output.shape == frame.shape
-    assert id_label[4] == 0.5
+    assert id_label[4] == 0.3
     assert id_label[5] == (255, 255, 255)
     assert id_label[6] == 1
 
