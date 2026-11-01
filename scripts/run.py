@@ -1,10 +1,11 @@
 import argparse
 import csv
 import json
+import math
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
-import sys
 
 import cv2
 
@@ -134,14 +135,20 @@ def display_size(width, height, max_width=1280, max_height=720):
 
 
 def create_output_dir():
-    timestamp = datetime.now().strftime(
-        "%Y-%m-%d_%H%M%S"
-    )
+    runs_dir = BASE_DIR / "reports" / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    output_dir = runs_dir / timestamp
+    suffix = 1
 
-    output_dir = BASE_DIR / "reports" / "runs" / timestamp
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    return output_dir
+    while True:
+        try:
+            output_dir.mkdir()
+        except FileExistsError:
+            output_dir = runs_dir / f"{timestamp}_{suffix}"
+            suffix += 1
+        else:
+            return output_dir
 
 
 def main():
@@ -200,9 +207,10 @@ def main():
     args = parser.parse_args()
 
     if args.inference_interval < 1:
-        raise ValueError(
-            "--inference-interval must be >= 1"
-        )
+        parser.error("--inference-interval must be >= 1")
+
+    if not math.isfinite(args.confidence) or not 0 <= args.confidence <= 1:
+        parser.error("--confidence must be a finite number between 0 and 1")
 
     source_value = (
         args.source
@@ -255,6 +263,14 @@ def main():
         fps_source,
         (width, height),
     )
+
+    if not video_writer.isOpened():
+        video_writer.release()
+        capture.release()
+        raise RuntimeError(
+            f"Cannot open output video writer: {output_video} "
+            f"(codec=mp4v, size={width}x{height}, fps={fps_source})"
+        )
 
     slot_csv_path = output_dir / "slot_predictions.csv"
     frame_csv_path = output_dir / "frame_statistics.csv"
