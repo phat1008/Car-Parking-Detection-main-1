@@ -103,15 +103,6 @@
   </section>
 
   <section class="card">
-    <h2>Nhận diện từ ảnh</h2>
-    <form id="upload-form">
-      <input type="file" name="image" id="image-input" accept="image/jpeg,image/png" required>
-      <button type="submit" id="submit-btn">Nhận diện</button>
-    </form>
-    <p class="msg" id="upload-msg"></p>
-  </section>
-
-  <section class="card">
     <h2>Nhận diện từ video</h2>
     <form id="video-form">
       <input type="file" name="video" id="video-input" accept="video/mp4,video/quicktime,video/x-msvideo" required>
@@ -488,34 +479,6 @@ document.getElementById("video-form").addEventListener("submit", async (event) =
       + availability
       + (warnings.length ? " Cần chú ý: " + warnings.join(", ") + "." : "")
       + " Thống kê này không thay thế việc kiểm tra độ chính xác dự đoán.";
-    loadHistory();
-  } catch (err) {
-    msg.className = "msg error";
-    msg.textContent = err.message;
-  } finally {
-    btn.disabled = false;
-  }
-});
-
-document.getElementById("upload-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const input = document.getElementById("image-input");
-  const btn = document.getElementById("submit-btn");
-  const msg = document.getElementById("upload-msg");
-  if (!input.files.length) return;
-
-  const form = new FormData();
-  form.append("image", input.files[0]);
-  btn.disabled = true;
-  msg.className = "msg";
-  msg.textContent = "Đang nhận diện...";
-  try {
-    const res = await fetch("/api/detect", { method: "POST", body: form });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Lỗi không xác định");
-    applyRecord(data);
-    msg.className = "msg ok";
-    msg.textContent = data.saved ? "Đã nhận diện và lưu kết quả." : "Đã nhận diện nhưng KHÔNG lưu được vào cơ sở dữ liệu.";
     loadHistory();
   } catch (err) {
     msg.className = "msg error";

@@ -461,43 +461,6 @@ def create_app(detector=None, store=None):
             },
         )
 
-    @app.post("/api/detect")
-    def detect():
-        file = request.files.get("image")
-        if file is None or file.filename == "":
-            return jsonify({"error": "Thiếu file ảnh (field 'image')."}), 400
-
-        frame = cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
-        if frame is None:
-            return (
-                jsonify({"error": "Không đọc được ảnh. Hãy dùng JPG hoặc PNG."}),
-                400,
-            )
-
-        try:
-            output = classify_frame_chunked(detector, frame)
-        except Exception:
-            logger.exception("Lỗi khi nhận diện ảnh")
-            return jsonify({"error": "Lỗi khi chạy model."}), 500
-
-        counts = ParkingCounter.count_slots(output["results"], detector.slots)
-        record = {
-            "camera_id": camera_id,
-            "source": "image",
-            "created_at": timestamp_utc(),
-            "counts": counts,
-            **summary(counts, output["results"]),
-        }
-
-        saved = True
-        try:
-            store.save(record)
-        except Exception:
-            logger.exception("Không lưu được kết quả vào MongoDB")
-            saved = False
-
-        return jsonify({**record, "saved": saved})
-
     @app.get("/api/status")
     def status():
         try:
