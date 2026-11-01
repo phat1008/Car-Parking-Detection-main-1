@@ -41,10 +41,13 @@ def _row(record, time_sec, counts):
     }
 
 
-def build_history_csv(records):
-    """Mỗi bản ghi ảnh thành 1 dòng; mỗi khung hình video thành 1 dòng."""
+def build_history_csv(records, delimiter=","):
+    """Mỗi bản ghi ảnh thành 1 dòng; mỗi khung hình video thành 1 dòng.
+
+    delimiter=";" dùng cho Excel cài tiếng Việt (ngăn cột bằng dấu chấm phẩy).
+    """
     buffer = io.StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=REPORT_COLUMNS)
+    writer = csv.DictWriter(buffer, fieldnames=REPORT_COLUMNS, delimiter=delimiter)
     writer.writeheader()
 
     for record in records:

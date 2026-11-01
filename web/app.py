@@ -75,7 +75,8 @@ def create_app(detector=None, store=None):
         except Exception:
             logger.exception("Không đọc được dữ liệu cho báo cáo")
             return jsonify({"error": "Không kết nối được cơ sở dữ liệu."}), 503
-        body = build_history_csv(records)
+        delimiter = ";" if request.args.get("delimiter") == ";" else ","
+        body = build_history_csv(records, delimiter=delimiter)
         return Response(
             body,
             mimetype="text/csv; charset=utf-8",
