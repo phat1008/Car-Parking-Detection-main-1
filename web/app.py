@@ -9,7 +9,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
@@ -18,6 +18,7 @@ if str(BASE_DIR) not in sys.path:
 from src.parking_counter import ParkingCounter  # noqa: E402
 from web.inference import classify_frame_chunked, sample_video_frames  # noqa: E402
 from web.layout import build_layout  # noqa: E402
+from web.report import build_history_csv, find_latest_run, load_run_report  # noqa: E402
 from web.storage import DetectionStore  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,31 @@ def create_app(detector=None, store=None):
                 "persistent_storage": store.persistent,
             }
         )
+
+    @app.get("/api/report.csv")
+    def report_csv():
+        try:
+            limit = max(1, min(int(request.args.get("limit", 200)), 1000))
+            records = store.history(limit=limit)
+        except Exception:
+            logger.exception("Không đọc được dữ liệu cho báo cáo")
+            return jsonify({"error": "Không kết nối được cơ sở dữ liệu."}), 503
+        body = build_history_csv(records)
+        return Response(
+            body,
+            mimetype="text/csv; charset=utf-8",
+            headers={"Content-Disposition": "attachment; filename=parking_report.csv"},
+        )
+
+    @app.get("/api/report/latest-run")
+    def report_latest_run():
+        run_dir = find_latest_run(BASE_DIR)
+        if run_dir is None:
+            return jsonify({
+                "error": "Không có run nào trong reports/runs/ trên máy chủ này. "
+                         "Báo cáo run chỉ có khi chạy local bằng scripts/run.py."
+            }), 404
+        return jsonify(load_run_report(run_dir))
 
     @app.get("/api/layout")
     def layout_view():
