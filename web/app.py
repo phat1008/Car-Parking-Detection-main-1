@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import cv2
-import numpy as np
 from flask import Flask, Response, jsonify, render_template, request
 
 BASE_DIR = Path(__file__).resolve().parents[1]
