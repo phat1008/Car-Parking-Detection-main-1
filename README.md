@@ -63,6 +63,7 @@ python scripts/run.py `
   --model models/parking_cnn.keras `
   --confidence 0.60 `
   --inference-interval 1 `
+  --prefetch-frames 4 `
   --no-display
 ```
 
@@ -75,7 +76,18 @@ Các tham số:
 | `--model` | `models/parking_cnn.keras` | Model CNN đã huấn luyện. |
 | `--confidence` | `0.60` | Ngưỡng để phân loại dự đoán thành `empty`/`occupied`; thấp hơn ngưỡng sẽ là `unknown`. |
 | `--inference-interval` | `2` | Chạy CNN mỗi N frame; frame đầu tiên luôn được inference. `1` nghĩa là inference trên mọi frame. |
+| `--prefetch-frames` | `4` | Số frame CPU giải mã trước trong khi model đang inference; tăng giá trị sẽ dùng thêm RAM. |
 | `--no-display` | Tắt | Không mở cửa sổ preview. Video và báo cáo vẫn được ghi. |
+
+Runner dùng CPU để giải mã video, crop/tiền xử lý ảnh và ghi kết quả; TensorFlow
+tự chọn GPU khi thiết bị/runtime được hỗ trợ, nếu không sẽ chạy trên CPU. Bộ đệm
+frame có giới hạn giúp giải mã chồng lấp với inference mà vẫn giữ nguyên thứ tự
+và không bỏ frame. Tăng `--inference-interval` để giảm tải inference khi cần
+preview mượt hơn; trạng thái được giữ lại giữa các lần inference.
+
+Dashboard cũng dùng buffer giải mã nền giới hạn 4 frame để chồng lấp CPU decode
+với CNN inference, đồng thời giữ thứ tự frame và giới hạn bộ nhớ. Batch các ô
+đỗ tiếp tục được đưa vào model cùng lúc.
 
 Mỗi lần chạy tạo thư mục riêng dưới `reports/runs/<thời_gian>/`:
 
@@ -125,8 +137,9 @@ python scripts/validate_config.py
 `annotate_slots.py` tự kiểm tra kích thước nguồn, ID trùng, tọa độ/kích thước
 box, giới hạn ảnh và yêu cầu có ít nhất một slot được bật trước khi lưu. Ảnh
 preview được thu nhỏ để vừa cửa sổ; tọa độ chuột được quy đổi về kích thước ảnh
-gốc, nên file config vẫn lưu tọa độ theo frame nguồn. Dùng `z` để undo, `r` để
-xóa toàn bộ slot, `s` để lưu và `q` hoặc `Esc` để thoát.
+gốc, nên file config vẫn lưu tọa độ theo frame nguồn. Nhấp chuột phải vào một ô
+để xóa ô đó; nếu các ô chồng lấn, ô được vẽ sau cùng sẽ bị xóa. Dùng `z` để undo,
+`r` để xóa toàn bộ slot, `s` để lưu và `q` hoặc `Esc` để thoát.
 
 ## Dữ liệu và huấn luyện
 

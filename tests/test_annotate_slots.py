@@ -42,6 +42,72 @@ def test_mouse_coordinates_map_back_to_source_image():
     assert annotate_slots.to_source_coordinates(1280, 720) == (1919, 1079)
 
 
+def test_remove_slot_at_source_point_removes_matching_slot(monkeypatch):
+    """Remove the slot under the cursor using source-image coordinates."""
+    config = valid_config()
+    monkeypatch.setattr(annotate_slots, "boxes", config["boxes"])
+
+    removed = annotate_slots.remove_slot_at(20, 15)
+
+    assert removed["id"] == 0
+    assert annotate_slots.boxes == []
+
+
+def test_remove_slot_at_source_point_removes_topmost_overlapping_slot(monkeypatch):
+    """When slots overlap, remove the one rendered last."""
+    first = valid_config()["boxes"][0]
+    second = {**first, "id": 1}
+    monkeypatch.setattr(annotate_slots, "boxes", [first, second])
+
+    removed = annotate_slots.remove_slot_at(15, 15)
+
+    assert removed["id"] == 1
+    assert annotate_slots.boxes == [first]
+
+
+def test_remove_slot_at_source_point_keeps_slots_when_point_misses(monkeypatch):
+    """Leave the layout unchanged when the click is outside every slot."""
+    config = valid_config()
+    monkeypatch.setattr(annotate_slots, "boxes", config["boxes"])
+
+    assert annotate_slots.remove_slot_at(0, 0) is None
+    assert annotate_slots.boxes == config["boxes"]
+
+
+def test_right_click_removes_slot_at_scaled_preview_coordinates(monkeypatch):
+    """Map a preview right-click to source coordinates and refresh the layout."""
+    box = {
+        "id": 0,
+        "x": 30,
+        "y": 10,
+        "width": 20,
+        "height": 20,
+        "enabled": True,
+    }
+    monkeypatch.setattr(annotate_slots, "boxes", [box])
+    monkeypatch.setattr(annotate_slots, "source_width", 100)
+    monkeypatch.setattr(annotate_slots, "source_height", 80)
+    monkeypatch.setattr(annotate_slots, "scale_x", 0.5)
+    monkeypatch.setattr(annotate_slots, "scale_y", 0.5)
+    refreshed = []
+    monkeypatch.setattr(
+        annotate_slots,
+        "show_current_layout",
+        lambda: refreshed.append(True),
+    )
+
+    annotate_slots.mouse_callback(
+        annotate_slots.cv2.EVENT_RBUTTONDOWN,
+        20,
+        10,
+        0,
+        None,
+    )
+
+    assert annotate_slots.boxes == []
+    assert refreshed == [True]
+
+
 def test_config_validation_accepts_valid_layout():
     """Confirm a bounded layout with at least one enabled slot can be saved."""
     assert annotate_slots.validate_config(valid_config()) is None

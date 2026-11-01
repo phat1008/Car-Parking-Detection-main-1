@@ -7,9 +7,7 @@ class SlotManager:
         self.config_path = Path(config_path)
 
         if not self.config_path.exists():
-            raise FileNotFoundError(
-                f"Không tìm thấy file config: {self.config_path}"
-            )
+            raise FileNotFoundError(f"Không tìm thấy file config: {self.config_path}")
 
         with self.config_path.open("r", encoding="utf-8") as file:
             self.config = json.load(file)
@@ -18,9 +16,7 @@ class SlotManager:
         self.source_height = int(self.config["source_height"])
         self.camera_id = self.config.get("camera_id", "camera_01")
 
-        self.slots = self._validate_slots(
-            self.config.get("boxes", [])
-        )
+        self.slots = self._validate_slots(self.config.get("boxes", []))
 
     def _validate_slots(self, raw_slots):
         seen_ids = set()
@@ -35,22 +31,15 @@ class SlotManager:
                 "height",
             ]
 
-            missing_keys = [
-                key for key in required_keys
-                if key not in slot
-            ]
+            missing_keys = [key for key in required_keys if key not in slot]
 
             if missing_keys:
-                raise ValueError(
-                    f"Slot index {index} thiếu: {missing_keys}"
-                )
+                raise ValueError(f"Slot index {index} thiếu: {missing_keys}")
 
             slot_id = slot["id"]
 
             if slot_id in seen_ids:
-                raise ValueError(
-                    f"ID slot bị trùng: {slot_id}"
-                )
+                raise ValueError(f"ID slot bị trùng: {slot_id}")
 
             seen_ids.add(slot_id)
 
@@ -59,41 +48,26 @@ class SlotManager:
             width = slot["width"]
             height = slot["height"]
 
-            if not all(
-                isinstance(value, (int, float))
-                for value in [x, y, width, height]
-            ):
-                raise ValueError(
-                    f"Slot {slot_id} có tọa độ/kích thước không phải số"
-                )
+            if not all(isinstance(value, (int, float)) for value in [x, y, width, height]):
+                raise ValueError(f"Slot {slot_id} có tọa độ/kích thước không phải số")
 
             if x < 0 or y < 0:
-                raise ValueError(
-                    f"Slot {slot_id} có tọa độ âm"
-                )
+                raise ValueError(f"Slot {slot_id} có tọa độ âm")
 
             if width <= 0 or height <= 0:
-                raise ValueError(
-                    f"Slot {slot_id} có kích thước không hợp lệ"
-                )
+                raise ValueError(f"Slot {slot_id} có kích thước không hợp lệ")
 
             if x + width > self.source_width:
-                raise ValueError(
-                    f"Slot {slot_id} vượt source_width"
-                )
+                raise ValueError(f"Slot {slot_id} vượt source_width")
 
             if y + height > self.source_height:
-                raise ValueError(
-                    f"Slot {slot_id} vượt source_height"
-                )
+                raise ValueError(f"Slot {slot_id} vượt source_height")
 
             if slot.get("enabled", True):
                 valid_slots.append(slot)
 
         if not valid_slots:
-            raise ValueError(
-                "Config không có parking slot enabled"
-            )
+            raise ValueError("Config không có parking slot enabled")
 
         return valid_slots
 
@@ -140,8 +114,8 @@ class SlotManager:
             x, y, width, height = box
 
             crop = frame[
-                y:y + height,
-                x:x + width,
+                y : y + height,
+                x : x + width,
             ]
 
             slot_items.append(

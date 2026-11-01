@@ -10,14 +10,10 @@ class SlotSmoother:
         min_stable_count=5,
     ):
         if window_size < 1:
-            raise ValueError(
-                "window_size phải lớn hơn 0"
-            )
+            raise ValueError("window_size phải lớn hơn 0")
 
         if not 1 <= min_stable_count <= window_size:
-            raise ValueError(
-                "min_stable_count phải nằm trong 1..window_size"
-            )
+            raise ValueError("min_stable_count phải nằm trong 1..window_size")
 
         self.window_size = window_size
         self.min_stable_count = min_stable_count
@@ -40,10 +36,7 @@ class SlotSmoother:
                 "unknown",
             )
 
-        if (
-            confidence is not None
-            and confidence < min_confidence
-        ):
+        if confidence is not None and confidence < min_confidence:
             return self.stable_states.get(
                 slot_id,
                 "unknown",

@@ -1,5 +1,4 @@
 from pathlib import Path
-from collections import Counter
 
 DATASET_DIR = Path("data/clf-data")
 EXTENSIONS = {".jpg", ".jpeg", ".png"}
@@ -7,8 +6,7 @@ EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
 def collect_images(folder: Path):
     return [
-        path for path in folder.rglob("*")
-        if path.is_file() and path.suffix.lower() in EXTENSIONS
+        path for path in folder.rglob("*") if path.is_file() and path.suffix.lower() in EXTENSIONS
     ]
 
 

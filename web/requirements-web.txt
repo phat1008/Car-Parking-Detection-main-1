@@ -1,0 +1,9 @@
+# Thư viện runtime cho web app và Docker image.
+# Pin phiên bản để tránh lỗi tương thích numpy/TensorFlow.
+flask==3.0.3
+gunicorn==22.0.0
+pymongo==4.8.0
+numpy==1.26.4
+opencv-python-headless==4.9.0.80
+tensorflow-cpu==2.20.0
+keras==3.15.1

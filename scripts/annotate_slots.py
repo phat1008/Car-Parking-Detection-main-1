@@ -12,7 +12,7 @@ MIN_SLOT_SIZE = 10
 
 drawing = False
 ix = iy = -1
-boxes = []
+boxes: list[dict[str, int | str | bool]] = []
 current_frame = None
 display_image = None
 source_width = source_height = 0
@@ -63,9 +63,7 @@ def validate_config(config):
         if not isinstance(box, dict):
             return f"Slot index {index} phải là object."
 
-        missing_keys = [
-            key for key in ("id", "x", "y", "width", "height") if key not in box
-        ]
+        missing_keys = [key for key in ("id", "x", "y", "width", "height") if key not in box]
         if missing_keys:
             return f"Slot index {index} thiếu: {missing_keys}"
 
@@ -153,8 +151,8 @@ def draw_grid_ui():
         cv2.LINE_AA,
     )
     instructions = (
-        "Left click + drag: draw slot | z: undo | r: reset",
-        "s: save config | q: quit",
+        "Left click + drag: draw slot | Right click: delete slot",
+        "z: undo | r: reset | s: save | q: quit",
     )
     for index, text in enumerate(instructions):
         cv2.putText(
@@ -178,11 +176,29 @@ def show_current_layout():
     cv2.imshow(WINDOW_NAME, display_image)
 
 
+def remove_slot_at(source_x, source_y):
+    """Remove and return the topmost slot containing the source-image point."""
+    for index in range(len(boxes) - 1, -1, -1):
+        box = boxes[index]
+        if (
+            box["x"] <= source_x <= box["x"] + box["width"]
+            and box["y"] <= source_y <= box["y"] + box["height"]
+        ):
+            return boxes.pop(index)
+    return None
+
+
 def mouse_callback(event, x, y, flags, param):
     """Draw slots in source coordinates even when the preview is resized."""
-    global drawing, ix, iy, boxes
+    global drawing, ix, iy
 
-    if event == cv2.EVENT_LBUTTONDOWN:
+    if event == cv2.EVENT_RBUTTONDOWN:
+        source_x, source_y = to_source_coordinates(x, y)
+        removed = remove_slot_at(source_x, source_y)
+        if removed is not None:
+            print(f"[INFO] Đã xóa slot ID {removed.get('id')}")
+            show_current_layout()
+    elif event == cv2.EVENT_LBUTTONDOWN:
         ix, iy = to_source_coordinates(x, y)
         drawing = True
     elif event == cv2.EVENT_MOUSEMOVE and drawing:
@@ -276,9 +292,7 @@ def main():
     global source_width, source_height, display_width, display_height
     global scale_x, scale_y
 
-    parser = argparse.ArgumentParser(
-        description="Annotate parking slots on an image or video."
-    )
+    parser = argparse.ArgumentParser(description="Annotate parking slots on an image or video.")
     parser.add_argument(
         "--source",
         type=Path,

@@ -1,4 +1,5 @@
 from pathlib import Path
+
 import cv2
 
 DATASET_DIR = Path("data/clf-data")

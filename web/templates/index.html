@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Car Parking Dashboard</title>
+  <style>
+    :root { --bg:#0f1115; --card:#181b22; --text:#e7e9ee; --muted:#8a90a0;
+            --empty:#22c55e; --occupied:#ef4444; --unknown:#eab308; --invalid:#6b7280; --pending:#374151; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text); }
+    header { padding:16px 24px; border-bottom:1px solid #262a33; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+    h1 { font-size:18px; margin:0; }
+    main { padding:24px; display:grid; gap:20px; max-width:1400px; margin:0 auto; }
+    .card { background:var(--card); border-radius:12px; padding:18px; }
+    .card h2 { font-size:15px; margin:0 0 12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; }
+    .stat { background:#20242d; border-radius:10px; padding:14px; }
+    .stat .value { font-size:28px; font-weight:700; }
+    .stat .label { color:var(--muted); font-size:13px; }
+
+    /* Bố cục bãi đỗ: các cột nằm ngang, mỗi cột gồm 2 dãy đặt cạnh nhau */
+    .map { position:relative; width:100%; max-width:1000px; margin:0 auto; padding-bottom:56.39%;
+           background:#0b0d12; border-radius:8px; overflow:hidden; }
+    .map-slot { position:absolute; box-sizing:border-box; border-radius:2px; font-size:8px; font-weight:700;
+                color:#0b0d10; display:flex; align-items:center; justify-content:center; line-height:1;
+                overflow:hidden; white-space:nowrap; }
+    .map-slot.empty { background:var(--empty); }
+    .map-slot.occupied { background:var(--occupied); color:#fff; }
+    .map-slot.unknown { background:var(--unknown); }
+    .map-slot.invalid { background:var(--invalid); color:#fff; }
+    .map-slot.pending { background:var(--pending); color:var(--muted); }
+    .lot { display:block; }
+    .column { display:flex; flex-direction:column; align-items:center; gap:6px; flex:0 0 auto; }
+    .column-label { font-size:11px; color:var(--muted); }
+    .lanes { display:flex; gap:4px; }
+    .lane { display:flex; flex-direction:column; gap:3px; }
+    .slot { width:44px; height:18px; border-radius:4px; font-size:10px; font-weight:600; color:#0b0d10;
+            display:flex; align-items:center; justify-content:center; }
+    .slot.empty { background:var(--empty); }
+    .slot.occupied { background:var(--occupied); color:#fff; }
+    .slot.unknown { background:var(--unknown); }
+    .slot.invalid { background:var(--invalid); color:#fff; }
+    .slot.pending { background:var(--pending); color:var(--muted); }
+
+    .legend { color:var(--muted); font-size:13px; margin-top:10px; }
+    form { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    button { background:#3b82f6; color:#fff; border:0; border-radius:8px; padding:10px 18px; font-weight:600; cursor:pointer; }
+    button:disabled { opacity:.5; cursor:wait; }
+    input[type=file] { color:var(--muted); }
+    .msg { font-size:14px; min-height:20px; }
+    .msg.error { color:#f87171; }
+    .msg.ok { color:#4ade80; }
+    .msg.warning { color:#fbbf24; }
+    .notice-list { display:grid; gap:10px; }
+    .notice { border-left:4px solid #64748b; border-radius:8px; padding:12px 14px; background:#20242d; }
+    .notice h3 { margin:0 0 4px; font-size:14px; }
+    .notice p { margin:0; color:var(--muted); font-size:13px; line-height:1.5; }
+    .notice.warning { border-color:#f59e0b; }
+    .notice.success { border-color:#22c55e; }
+    .notice.error { border-color:#ef4444; }
+    .report-summary { margin-top:14px; color:var(--muted); font-size:13px; line-height:1.7; }
+    .report-summary strong { color:var(--text); }
+    .processed-preview { margin:16px 0; }
+    .processed-preview img { display:block; width:100%; max-height:560px; object-fit:contain; background:#0b0d12; border-radius:8px; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    th, td { text-align:left; padding:8px; border-bottom:1px solid #262a33; }
+    th { color:var(--muted); font-weight:600; }
+    input[type=number] { background:#20242d; color:var(--text); border:1px solid #262a33; border-radius:6px; padding:6px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Car Parking Dashboard</h1>
+  <span class="legend" id="camera-label"></span>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Trạng thái hiện tại</h2>
+    <div class="stats">
+      <div class="stat"><div class="value" id="empty-count">–</div><div class="label">Ô trống</div></div>
+      <div class="stat"><div class="value" id="occupied-count">–</div><div class="label">Ô có xe</div></div>
+      <div class="stat"><div class="value" id="unknown-count">–</div><div class="label">Không chắc chắn</div></div>
+      <div class="stat"><div class="value" id="configured-count">–</div><div class="label">Tổng ô đã cấu hình</div></div>
+    </div>
+    <p class="legend" id="updated-at">Chưa có dữ liệu.</p>
+    <div class="lot" id="lot"></div>
+    <p class="legend">
+      <span style="color:var(--empty)">■</span> trống &nbsp;
+      <span style="color:var(--occupied)">■</span> có xe &nbsp;
+      <span style="color:var(--unknown)">■</span> không chắc chắn &nbsp;
+      <span style="color:var(--invalid)">■</span> lỗi &nbsp;
+      <span style="color:var(--pending)">■</span> chưa nhận diện
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>Thông báo &amp; phân tích báo cáo</h2>
+    <div id="report-insights" class="notice-list" role="status" aria-live="polite">
+      <p class="legend">Đang đọc báo cáo nhận diện...</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Nhận diện từ video</h2>
+    <form id="video-form">
+      <input type="file" name="video" id="video-input" accept="video/mp4,video/quicktime,video/x-msvideo" required>
+      <button type="submit" id="video-btn">Chạy video</button>
+    </form>
+    <p class="msg" id="video-msg"></p>
+    <div class="processed-preview" id="processed-preview" hidden>
+      <img id="processed-frame" alt="Khung hình video đã xử lý">
+      <p class="legend" id="processed-frame-time"></p>
+    </div>
+    <table>
+      <thead><tr><th>Thời điểm (giây)</th><th>Trống</th><th>Có xe</th><th>Không chắc chắn</th></tr></thead>
+      <tbody id="timeline-body"><tr><td colspan="4">Chưa có dữ liệu video.</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Báo cáo</h2>
+    <p class="legend">Xuất các kết quả đã lưu thành file CSV.</p>
+    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px">
+      <a href="/api/report.csv" download><button type="button">Tải báo cáo CSV</button></a>
+      <a href="/api/report.csv?delimiter=;" download><button type="button">CSV cho Excel tiếng Việt</button></a>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Lịch sử gần đây</h2>
+    <table>
+      <thead><tr><th>Thời gian (UTC)</th><th>Trống</th><th>Có xe</th><th>Không chắc chắn</th></tr></thead>
+      <tbody id="history-body"><tr><td colspan="4">Đang tải...</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+const STATE_LABELS = { empty: "Trống", occupied: "Có xe", unknown: "Không chắc chắn", invalid: "Lỗi" };
+let layoutColumns = [];   // [{column, lanes: [[id, ...], [id, ...]]}]
+let geometry = null;        // {source_width, source_height, boxes: [{id, x, y, width, height}]}
+let slotStates = {};      // id -> {state, confidence}
+
+function setText(id, value) { document.getElementById(id).textContent = value; }
+
+function renderCounts(counts, createdAt) {
+  setText("empty-count", counts.empty);
+  setText("occupied-count", counts.occupied);
+  setText("unknown-count", counts.unknown);
+  setText("configured-count", counts.configured);
+  setText("updated-at", createdAt ? "Cập nhật lúc: " + new Date(createdAt).toLocaleString() : "Chưa có dữ liệu.");
+}
+
+function renderLot() {
+  const lot = document.getElementById("lot");
+  lot.replaceChildren();
+  if (!geometry) return;
+
+  const map = document.createElement("div");
+  map.className = "map";
+  const sw = geometry.source_width;
+  const sh = geometry.source_height;
+
+  for (const box of geometry.boxes) {
+    const info = slotStates[box.id];
+    const state = info ? info.state : "pending";
+    const el = document.createElement("div");
+    el.className = "map-slot " + state;
+    el.style.left = (box.x / sw * 100) + "%";
+    el.style.top = (box.y / sh * 100) + "%";
+    el.style.width = (box.width / sw * 100) + "%";
+    el.style.height = (box.height / sh * 100) + "%";
+    el.title = info
+      ? `Ô ${box.id}: ${STATE_LABELS[state] || state} (độ tin cậy ${(info.confidence * 100).toFixed(1)}%)`
+      : `Ô ${box.id}: chưa nhận diện`;
+    el.textContent = box.id;
+    map.appendChild(el);
+  }
+  lot.appendChild(map);
+}
+
+function applyRecord(record) {
+  slotStates = {};
+  for (const slot of record.slots) slotStates[slot.id] = slot;
+  renderCounts(record.counts, record.created_at);
+  renderLot();
+}
+
+async function loadLayout() {
+  try {
+    const res = await fetch("/api/layout");
+    const data = await res.json();
+    layoutColumns = data.columns;
+    geometry = data;
+    setText("configured-count", data.total_slots);
+    renderLot();
+  } catch (err) {
+    setText("updated-at", "Không tải được bố cục bãi đỗ.");
+  }
+}
+
+async function loadStatus() {
+  try {
+    const res = await fetch("/api/status");
+    const data = await res.json();
+    if (data.latest) applyRecord(data.latest);
+  } catch (err) {
+    setText("updated-at", "Không tải được trạng thái.");
+  }
+}
+
+async function loadHistory() {
+  const body = document.getElementById("history-body");
+  try {
+    const res = await fetch("/api/history?limit=20");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Lỗi");
+    body.replaceChildren();
+    if (data.items.length === 0) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = '<td colspan="4">Chưa có lịch sử.</td>';
+      body.appendChild(tr);
+      return;
+    }
+    for (const item of data.items) {
+      const tr = document.createElement("tr");
+      [item.created_at, item.counts.empty, item.counts.occupied, item.counts.unknown].forEach((v) => {
+        const td = document.createElement("td");
+        td.textContent = v;
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    }
+  } catch (err) {
+    body.replaceChildren();
+    const tr = document.createElement("tr");
+    tr.innerHTML = '<td colspan="4"></td>';
+    tr.firstChild.textContent = "Không tải được lịch sử: " + err.message;
+    body.appendChild(tr);
+  }
+}
+
+function clearTimeline() {
+  const body = document.getElementById("timeline-body");
+  body.replaceChildren();
+  const tr = document.createElement("tr");
+  tr.innerHTML = '<td colspan="4">Đang chờ xử lý video.</td>';
+  body.appendChild(tr);
+}
+
+function addReportSummary(container, title, lines) {
+  const summary = document.createElement("div");
+  summary.className = "report-summary";
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  summary.appendChild(heading);
+  for (const line of lines) {
+    const row = document.createElement("div");
+    row.textContent = line;
+    summary.appendChild(row);
+  }
+  container.appendChild(summary);
+}
+
+function renderReportInsights(data) {
+  const container = document.getElementById("report-insights");
+  container.replaceChildren();
+  for (const notice of data.notices || []) {
+    const card = document.createElement("article");
+    card.className = "notice " + notice.level;
+    const heading = document.createElement("h3");
+    heading.textContent = notice.title;
+    const message = document.createElement("p");
+    message.textContent = notice.message;
+    card.append(heading, message);
+    container.appendChild(card);
+  }
+
+  const model = data.model_evaluation;
+  if (model) {
+    const classSupport = model.supports || {};
+    const modelLines = [
+      `Accuracy: ${(model.accuracy * 100).toFixed(2)}% · Precision: ${(model.precision * 100).toFixed(2)}% · Recall: ${(model.recall * 100).toFixed(2)}% · F1: ${(model.f1_score * 100).toFixed(2)}%`,
+    ];
+    if (classSupport.empty !== undefined || classSupport.occupied !== undefined) {
+      modelLines.push(
+        `Số mẫu đánh giá: ô trống ${classSupport.empty ?? 0}, ô có xe ${classSupport.occupied ?? 0}.`
+      );
+    }
+    addReportSummary(container, "Báo cáo đánh giá CNN", modelLines);
+  }
+
+  const run = data.latest_run;
+  if (run) {
+    const counts = run.counts;
+    const known = counts.empty + counts.occupied;
+    const availability = known ? ` · Tỷ lệ trống ${((counts.empty / known) * 100).toFixed(1)}%` : "";
+    const threshold = Number.isFinite(run.confidence_threshold)
+      ? ` · Ngưỡng tin cậy ${(run.confidence_threshold * 100).toFixed(0)}%`
+      : "";
+    addReportSummary(container, `Lần chạy gần nhất · ${run.run_id}`, [
+      `Nguồn: ${run.source || "không rõ"} · ${run.processed_frames} frame · ${run.processed_inferences} lần nhận diện${threshold}.`,
+      `Ô trống ${counts.empty} · Có xe ${counts.occupied} · Chưa rõ ${counts.unknown} · Lỗi ${counts.invalid}${availability}.`,
+    ]);
+  }
+}
+
+async function loadReportInsights() {
+  const container = document.getElementById("report-insights");
+  try {
+    const response = await fetch("/api/insights");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Không tải được báo cáo.");
+    renderReportInsights(data);
+  } catch (err) {
+    container.replaceChildren();
+    const card = document.createElement("article");
+    card.className = "notice error";
+    const heading = document.createElement("h3");
+    heading.textContent = "Không tải được báo cáo";
+    const message = document.createElement("p");
+    message.textContent = err.message;
+    card.append(heading, message);
+    container.appendChild(card);
+  }
+}
+
+function appendTimelineItem(item) {
+  const body = document.getElementById("timeline-body");
+  if (body.rows.length === 1 && body.rows[0].cells.length === 1) body.replaceChildren();
+  const tr = document.createElement("tr");
+  [item.time_sec, item.counts.empty, item.counts.occupied, item.counts.unknown].forEach((value) => {
+    const td = document.createElement("td");
+    td.textContent = value;
+    tr.appendChild(td);
+  });
+  body.appendChild(tr);
+}
+
+async function consumeVideoStream(response) {
+  if (!response.body) throw new Error("Trình duyệt không hỗ trợ nhận kết quả video theo luồng.");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let completed = null;
+  let playbackStartedAt = null;
+
+  async function handleLine(line) {
+    if (!line.trim()) return;
+    const event = JSON.parse(line);
+    if (event.type === "frame") {
+      if (playbackStartedAt === null) {
+        playbackStartedAt = performance.now() - event.time_sec * 1000;
+      }
+      const targetTime = playbackStartedAt + event.time_sec * 1000;
+      const delay = targetTime - performance.now();
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+
+      document.getElementById("processed-preview").hidden = false;
+      const image = document.getElementById("processed-frame");
+      image.src = event.preview;
+      await image.decode();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      setText("processed-frame-time", `Khung hình ${event.frame} · ${event.time_sec} giây`);
+      renderCounts(event.counts);
+      setText("updated-at", `Đang xử lý video · ${event.time_sec} giây · ${event.inference ? "đang nhận diện" : "đang phát"}`);
+      if (event.inference) appendTimelineItem(event);
+    } else if (event.type === "error") {
+      throw new Error(event.error);
+    } else if (event.type === "complete") {
+      completed = event;
+    }
+  }
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+    for (const line of lines) await handleLine(line);
+    if (done) break;
+  }
+  if (buffer.trim()) await handleLine(buffer);
+  if (!completed) throw new Error("Luồng xử lý video kết thúc bất thường.");
+  return completed;
+}
+
+document.getElementById("video-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = document.getElementById("video-input");
+  const btn = document.getElementById("video-btn");
+  const msg = document.getElementById("video-msg");
+  if (!input.files.length) return;
+
+  const form = new FormData();
+  form.append("video", input.files[0]);
+  form.append("inference_interval", "2");
+  document.getElementById("processed-preview").hidden = true;
+  document.getElementById("processed-frame").removeAttribute("src");
+  clearTimeline();
+  btn.disabled = true;
+  msg.className = "msg";
+  msg.textContent = "Đang tải video lên...";
+  try {
+    const res = await fetch("/api/video", { method: "POST", body: form });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || "Lỗi không xác định");
+    }
+    msg.textContent = "Đang xử lý video...";
+    const data = await consumeVideoStream(res);
+    applyRecord(data);
+    const counts = data.counts;
+    const known = counts.empty + counts.occupied;
+    const availability = known ? ` Tỷ lệ ô trống trong nhóm đã xác định: ${((counts.empty / known) * 100).toFixed(1)}%.` : "";
+    const warnings = [];
+    if (counts.unknown) warnings.push(`${counts.unknown} ô chưa xác định`);
+    if (counts.invalid) warnings.push(`${counts.invalid} ô lỗi`);
+    if (!data.saved) warnings.push("không lưu được lịch sử");
+    msg.className = warnings.length ? "msg warning" : "msg ok";
+    msg.textContent = (data.saved ? "Đã xử lý " : "Đã xử lý nhưng không lưu được lịch sử. ")
+      + data.processed_frames + " khung hình, " + data.processed_inferences
+      + " lần nhận diện từ " + data.video_name + ". Kết quả ở frame cuối: "
+      + `trống ${counts.empty}, có xe ${counts.occupied}, chưa rõ ${counts.unknown}, lỗi ${counts.invalid}.`
+      + availability
+      + (warnings.length ? " Cần chú ý: " + warnings.join(", ") + "." : "")
+      + " Thống kê này không thay thế việc kiểm tra độ chính xác dự đoán.";
+    loadHistory();
+  } catch (err) {
+    msg.className = "msg error";
+    msg.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+loadLayout();
+loadStatus();
+loadHistory();
+loadReportInsights();
+setInterval(loadStatus, 5000);
+setInterval(loadHistory, 30000);
+setInterval(loadReportInsights, 60000);
+</script>
+</body>
+</html>

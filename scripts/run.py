@@ -1,10 +1,13 @@
 import argparse
 import csv
 import json
+import math
+import queue
+import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
-import sys
 
 import cv2
 
@@ -14,13 +17,88 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from parking_detector import CNNParkingDetector
-from src.parking_counter import ParkingCounter
-from src.smoother import SlotSmoother
+from parking_detector import CNNParkingDetector  # noqa: E402
+from src.parking_counter import ParkingCounter  # noqa: E402
+from src.smoother import SlotSmoother  # noqa: E402
+
+
+class PrefetchedVideoReader:
+    _END_OF_STREAM = object()
+
+    def __init__(self, capture, buffer_size):
+        self.capture = capture
+        self.frames = queue.Queue(maxsize=buffer_size)
+        self.stop_event = threading.Event()
+        self.thread = threading.Thread(target=self._read_frames, daemon=True)
+        self.thread.start()
+
+    def _enqueue(self, item):
+        while not self.stop_event.is_set():
+            try:
+                self.frames.put(item, timeout=0.1)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def _read_frames(self):
+        try:
+            while not self.stop_event.is_set():
+                success, frame = self.capture.read()
+                if not success:
+                    break
+                if not self._enqueue(frame):
+                    return
+        except Exception as error:
+            self._enqueue(error)
+        finally:
+            self._enqueue(self._END_OF_STREAM)
+
+    def read(self):
+        item = self.frames.get()
+        if item is self._END_OF_STREAM:
+            return False, None
+        if isinstance(item, Exception):
+            raise item
+        return True, item
+
+    def close(self):
+        self.stop_event.set()
+        self.capture.release()
+        self.thread.join(timeout=1.0)
 
 
 def parse_source(value):
     return int(value) if value.isdigit() else value
+
+
+def draw_slot_id(output, slot_id, box):
+    """Draw a white slot ID label without a background."""
+    x, y = box[:2]
+    image_height, image_width = output.shape[:2]
+    text = str(slot_id)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    (text_width, text_height), baseline = cv2.getTextSize(
+        text,
+        font,
+        0.5,
+        1,
+    )
+    label_x = max(0, min(x + 2, image_width - text_width - 1))
+    text_y = min(
+        max(y + text_height, text_height),
+        image_height - baseline - 1,
+    )
+    cv2.putText(
+        output,
+        text,
+        (label_x, text_y),
+        font,
+        0.5,
+        (255, 255, 255),
+        1,
+        cv2.LINE_AA,
+    )
 
 
 def draw_results(frame, results, counts, fps):
@@ -46,6 +124,7 @@ def draw_results(frame, results, counts, fps):
             color,
             1,
         )
+        draw_slot_id(output, item["index"], item["box"])
 
     lines = [
         f"Configured: {counts['configured']}",
@@ -134,20 +213,24 @@ def display_size(width, height, max_width=1280, max_height=720):
 
 
 def create_output_dir():
-    timestamp = datetime.now().strftime(
-        "%Y-%m-%d_%H%M%S"
-    )
+    runs_dir = BASE_DIR / "reports" / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    output_dir = runs_dir / timestamp
+    suffix = 1
 
-    output_dir = BASE_DIR / "reports" / "runs" / timestamp
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    return output_dir
+    while True:
+        try:
+            output_dir.mkdir()
+        except FileExistsError:
+            output_dir = runs_dir / f"{timestamp}_{suffix}"
+            suffix += 1
+        else:
+            return output_dir
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="CNN production parking detection"
-    )
+    parser = argparse.ArgumentParser(description="CNN production parking detection")
 
     parser.add_argument(
         "source_positional",
@@ -163,20 +246,12 @@ def main():
 
     parser.add_argument(
         "--config",
-        default=str(
-            BASE_DIR
-            / "config"
-            / "parking_config.json"
-        ),
+        default=str(BASE_DIR / "config" / "parking_config.json"),
     )
 
     parser.add_argument(
         "--model",
-        default=str(
-            BASE_DIR
-            / "models"
-            / "parking_cnn.keras"
-        ),
+        default=str(BASE_DIR / "models" / "parking_cnn.keras"),
     )
 
     parser.add_argument(
@@ -193,6 +268,13 @@ def main():
     )
 
     parser.add_argument(
+        "--prefetch-frames",
+        type=int,
+        default=4,
+        help="Number of frames buffered while inference is running",
+    )
+
+    parser.add_argument(
         "--no-display",
         action="store_true",
     )
@@ -200,19 +282,16 @@ def main():
     args = parser.parse_args()
 
     if args.inference_interval < 1:
-        raise ValueError(
-            "--inference-interval must be >= 1"
-        )
+        parser.error("--inference-interval must be >= 1")
+    if args.prefetch_frames < 1:
+        parser.error("--prefetch-frames must be >= 1")
 
-    source_value = (
-        args.source
-        if args.source is not None
-        else args.source_positional
-    )
+    if not math.isfinite(args.confidence) or not 0 <= args.confidence <= 1:
+        parser.error("--confidence must be a finite number between 0 and 1")
+
+    source_value = args.source if args.source is not None else args.source_positional
     source = parse_source(
-        source_value
-        if source_value is not None
-        else str(BASE_DIR / "carPark.mp4")
+        source_value if source_value is not None else str(BASE_DIR / "carPark.mp4")
     )
     output_dir = create_output_dir()
 
@@ -232,16 +311,10 @@ def main():
     capture = cv2.VideoCapture(source)
 
     if not capture.isOpened():
-        raise RuntimeError(
-            f"Cannot open source: {source}"
-        )
+        raise RuntimeError(f"Cannot open source: {source}")
 
-    width = int(
-        capture.get(cv2.CAP_PROP_FRAME_WIDTH)
-    )
-    height = int(
-        capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    )
+    width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     fps_source = capture.get(cv2.CAP_PROP_FPS)
 
@@ -255,6 +328,14 @@ def main():
         fps_source,
         (width, height),
     )
+
+    if not video_writer.isOpened():
+        video_writer.release()
+        capture.release()
+        raise RuntimeError(
+            f"Cannot open output video writer: {output_video} "
+            f"(codec=mp4v, size={width}x{height}, fps={fps_source})"
+        )
 
     slot_csv_path = output_dir / "slot_predictions.csv"
     frame_csv_path = output_dir / "frame_statistics.csv"
@@ -326,9 +407,11 @@ def main():
             ]
         )
 
+        frame_reader = PrefetchedVideoReader(capture, args.prefetch_frames)
+
         try:
             while True:
-                success, frame = capture.read()
+                success, frame = frame_reader.read()
 
                 if not success:
                     break
@@ -343,10 +426,7 @@ def main():
 
                 previous_time = now
 
-                should_infer = (
-                    frame_index == 1
-                    or frame_index % args.inference_interval == 0
-                )
+                should_infer = frame_index == 1 or frame_index % args.inference_interval == 0
 
                 if should_infer:
                     analysis = detector.classify_frame(frame)
@@ -376,9 +456,7 @@ def main():
                                 raw_state,
                                 stable_state,
                                 item.get("confidence"),
-                                item.get(
-                                    "probability_occupied"
-                                ),
+                                item.get("probability_occupied"),
                             ]
                         )
 
@@ -388,17 +466,9 @@ def main():
                         detector.slots,
                     )
 
-                    known_count = (
-                        last_counts["empty"]
-                        + last_counts["occupied"]
-                    )
+                    known_count = last_counts["empty"] + last_counts["occupied"]
 
-                    availability = (
-                        last_counts["empty"]
-                        / known_count
-                        if known_count
-                        else 0.0
-                    )
+                    availability = last_counts["empty"] / known_count if known_count else 0.0
 
                     timestamp = (frame_index - 1) / fps_source
 
@@ -439,7 +509,7 @@ def main():
                         break
 
         finally:
-            capture.release()
+            frame_reader.close()
             video_writer.release()
             cv2.destroyAllWindows()
 
@@ -453,6 +523,7 @@ def main():
         "processed_frames": frame_index,
         "processed_inferences": processed_inferences,
         "inference_interval": args.inference_interval,
+        "prefetch_frames": args.prefetch_frames,
         "confidence_threshold": args.confidence,
         "last_counts": last_counts,
         "output_video": str(output_video),
