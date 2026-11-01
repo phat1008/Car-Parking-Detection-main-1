@@ -33,6 +33,7 @@ def availability(empty, occupied):
     total = empty + occupied
     return round(empty / total, 4) if total else ""
 
+
 MAX_UPLOAD_MB = 60
 DEFAULT_INFERENCE_INTERVAL = 2
 
@@ -190,10 +191,7 @@ def create_app(detector=None, store=None):
     camera_id = detector.slot_manager.camera_id
     layout = build_layout(detector.slots)
     slot_column = {
-        slot_id: col["column"]
-        for col in layout
-        for lane in col["lanes"]
-        for slot_id in lane
+        slot_id: col["column"] for col in layout for lane in col["lanes"] for slot_id in lane
     }
 
     def column_stats(results):
@@ -209,11 +207,17 @@ def create_app(detector=None, store=None):
 
     def slot_list(results):
         return [
-            {"id": item["index"], "state": item["state"], "confidence": round(item["confidence"], 4)}
+            {
+                "id": item["index"],
+                "state": item["state"],
+                "confidence": round(item["confidence"], 4),
+            }
             for item in results
         ]
 
-    def summary(counts, results, processed_frames=1, processed_inferences=1, inference_interval=None):
+    def summary(
+        counts, results, processed_frames=1, processed_inferences=1, inference_interval=None
+    ):
         empty, occupied = counts.get("empty", 0), counts.get("occupied", 0)
         return {
             "schema_version": 2,
@@ -465,7 +469,10 @@ def create_app(detector=None, store=None):
 
         frame = cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
         if frame is None:
-            return jsonify({"error": "Không đọc được ảnh. Hãy dùng JPG hoặc PNG."}), 400
+            return (
+                jsonify({"error": "Không đọc được ảnh. Hãy dùng JPG hoặc PNG."}),
+                400,
+            )
 
         try:
             output = classify_frame_chunked(detector, frame)
