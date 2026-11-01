@@ -103,6 +103,15 @@
   </section>
 
   <section class="card">
+    <h2>Nhận diện từ ảnh</h2>
+    <form id="upload-form">
+      <input type="file" name="image" id="image-input" accept="image/jpeg,image/png" required>
+      <button type="submit" id="submit-btn">Nhận diện</button>
+    </form>
+    <p class="msg" id="upload-msg"></p>
+  </section>
+
+  <section class="card">
     <h2>Nhận diện từ video</h2>
     <form id="video-form">
       <input type="file" name="video" id="video-input" accept="video/mp4,video/quicktime,video/x-msvideo" required>
@@ -129,10 +138,12 @@
   </section>
 
   <section class="card">
-    <h2>Lịch sử gần đây</h2>
+    <h2>Lịch sử báo cáo</h2>
+    <p class="legend">Bấm vào một dòng để xem lại sơ đồ và thống kê của lần đó.</p>
+    <div id="history-detail"></div>
     <table>
-      <thead><tr><th>Thời gian (UTC)</th><th>Trống</th><th>Có xe</th><th>Không chắc chắn</th></tr></thead>
-      <tbody id="history-body"><tr><td colspan="4">Đang tải...</td></tr></tbody>
+      <thead><tr><th>Ngày giờ (UTC)</th><th>Nguồn</th><th>Trống</th><th>Có xe</th><th>Không chắc chắn</th></tr></thead>
+      <tbody id="history-body"><tr><td colspan="5">Đang tải...</td></tr></tbody>
     </table>
   </section>
 </main>
@@ -153,18 +164,15 @@ function renderCounts(counts, createdAt) {
   setText("updated-at", createdAt ? "Cập nhật lúc: " + new Date(createdAt).toLocaleString() : "Chưa có dữ liệu.");
 }
 
-function renderLot() {
-  const lot = document.getElementById("lot");
-  lot.replaceChildren();
+function buildMap(target, states) {
+  target.replaceChildren();
   if (!geometry) return;
-
   const map = document.createElement("div");
   map.className = "map";
   const sw = geometry.source_width;
   const sh = geometry.source_height;
-
   for (const box of geometry.boxes) {
-    const info = slotStates[box.id];
+    const info = states[box.id];
     const state = info ? info.state : "pending";
     const el = document.createElement("div");
     el.className = "map-slot " + state;
@@ -178,7 +186,55 @@ function renderLot() {
     el.textContent = box.id;
     map.appendChild(el);
   }
-  lot.appendChild(map);
+  target.appendChild(map);
+}
+
+function renderLot() {
+  buildMap(document.getElementById("lot"), slotStates);
+}
+
+function showHistoryRecord(record) {
+  const detail = document.getElementById("history-detail");
+  detail.replaceChildren();
+  const states = {};
+  for (const slot of record.slots || []) states[slot.id] = slot;
+
+  const title = document.createElement("p");
+  title.className = "legend";
+  const when = new Date(record.created_at).toLocaleString();
+  title.textContent = (record.source === "video" ? "Video: " + record.video_name : "Ảnh nhận diện")
+    + " — " + when
+    + " — trống " + record.counts.empty + ", có xe " + record.counts.occupied
+    + ", không chắc chắn " + record.counts.unknown
+    + (record.availability !== undefined && record.availability !== ""
+        ? ", tỷ lệ trống " + (record.availability * 100).toFixed(1) + "%" : "");
+  detail.appendChild(title);
+
+  const mapEl = document.createElement("div");
+  detail.appendChild(mapEl);
+  buildMap(mapEl, states);
+
+  if (record.column_stats) {
+    const table = document.createElement("table");
+    table.innerHTML = "<thead><tr><th>Cột</th><th>Trống</th><th>Có xe</th><th>Không chắc chắn</th></tr></thead>";
+    const tbody = document.createElement("tbody");
+    for (const col of record.column_stats) {
+      const tr = document.createElement("tr");
+      [col.column, col.empty, col.occupied, col.unknown].forEach((v) => {
+        const td = document.createElement("td");
+        td.textContent = v;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    detail.appendChild(table);
+  } else {
+    const note = document.createElement("p");
+    note.className = "legend";
+    note.textContent = "Bản ghi này được lưu trước khi có thống kê theo cột.";
+    detail.appendChild(note);
+  }
 }
 
 function applyRecord(record) {
@@ -220,23 +276,27 @@ async function loadHistory() {
     body.replaceChildren();
     if (data.items.length === 0) {
       const tr = document.createElement("tr");
-      tr.innerHTML = '<td colspan="4">Chưa có lịch sử.</td>';
+      tr.innerHTML = '<td colspan="5">Chưa có lịch sử.</td>';
       body.appendChild(tr);
       return;
     }
     for (const item of data.items) {
       const tr = document.createElement("tr");
-      [item.created_at, item.counts.empty, item.counts.occupied, item.counts.unknown].forEach((v) => {
+      tr.style.cursor = "pointer";
+      const source = item.source === "video" ? item.video_name : "Ảnh";
+      [new Date(item.created_at).toLocaleString(), source,
+       item.counts.empty, item.counts.occupied, item.counts.unknown].forEach((v) => {
         const td = document.createElement("td");
         td.textContent = v;
         tr.appendChild(td);
       });
+      tr.addEventListener("click", () => showHistoryRecord(item));
       body.appendChild(tr);
     }
   } catch (err) {
     body.replaceChildren();
     const tr = document.createElement("tr");
-    tr.innerHTML = '<td colspan="4"></td>';
+    tr.innerHTML = '<td colspan="5"></td>';
     tr.firstChild.textContent = "Không tải được lịch sử: " + err.message;
     body.appendChild(tr);
   }
@@ -428,6 +488,34 @@ document.getElementById("video-form").addEventListener("submit", async (event) =
       + availability
       + (warnings.length ? " Cần chú ý: " + warnings.join(", ") + "." : "")
       + " Thống kê này không thay thế việc kiểm tra độ chính xác dự đoán.";
+    loadHistory();
+  } catch (err) {
+    msg.className = "msg error";
+    msg.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById("upload-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = document.getElementById("image-input");
+  const btn = document.getElementById("submit-btn");
+  const msg = document.getElementById("upload-msg");
+  if (!input.files.length) return;
+
+  const form = new FormData();
+  form.append("image", input.files[0]);
+  btn.disabled = true;
+  msg.className = "msg";
+  msg.textContent = "Đang nhận diện...";
+  try {
+    const res = await fetch("/api/detect", { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Lỗi không xác định");
+    applyRecord(data);
+    msg.className = "msg ok";
+    msg.textContent = data.saved ? "Đã nhận diện và lưu kết quả." : "Đã nhận diện nhưng KHÔNG lưu được vào cơ sở dữ liệu.";
     loadHistory();
   } catch (err) {
     msg.className = "msg error";

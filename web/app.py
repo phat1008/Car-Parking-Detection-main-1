@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import cv2
+import numpy as np
 from flask import Flask, Response, jsonify, render_template, request
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -26,6 +27,11 @@ from web.report import build_history_csv  # noqa: E402
 from web.storage import DetectionStore  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+def availability(empty, occupied):
+    total = empty + occupied
+    return round(empty / total, 4) if total else ""
 
 MAX_UPLOAD_MB = 60
 DEFAULT_INFERENCE_INTERVAL = 2
@@ -183,6 +189,45 @@ def create_app(detector=None, store=None):
 
     camera_id = detector.slot_manager.camera_id
     layout = build_layout(detector.slots)
+    slot_column = {
+        slot_id: col["column"]
+        for col in layout
+        for lane in col["lanes"]
+        for slot_id in lane
+    }
+
+    def column_stats(results):
+        stats = {
+            col["column"]: {"column": col["column"], "empty": 0, "occupied": 0, "unknown": 0}
+            for col in layout
+        }
+        for item in results:
+            column = slot_column.get(item["index"])
+            if column is not None and item["state"] in ("empty", "occupied", "unknown"):
+                stats[column][item["state"]] += 1
+        return [stats[c] for c in sorted(stats)]
+
+    def slot_list(results):
+        return [
+            {"id": item["index"], "state": item["state"], "confidence": round(item["confidence"], 4)}
+            for item in results
+        ]
+
+    def summary(counts, results, processed_frames=1, processed_inferences=1, inference_interval=None):
+        empty, occupied = counts.get("empty", 0), counts.get("occupied", 0)
+        return {
+            "schema_version": 2,
+            "counts": counts,
+            "availability": availability(empty, occupied),
+            "column_stats": column_stats(results),
+            "slots": slot_list(results),
+            "processed_frames": processed_frames,
+            "processed_inferences": processed_inferences,
+            "inference_interval": inference_interval,
+        }
+
+    def timestamp_utc():
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     @app.get("/")
     def dashboard():
@@ -319,7 +364,10 @@ def create_app(detector=None, store=None):
                         )
                         timeline_item = {
                             "time_sec": round(time_sec, 2),
-                            "counts": last_counts,
+                            "counts": {
+                                k: last_counts[k]
+                                for k in ("empty", "occupied", "unknown", "invalid")
+                            },
                         }
                         timeline.append(timeline_item)
                         processed_inferences += 1
@@ -358,21 +406,16 @@ def create_app(detector=None, store=None):
                     "camera_id": camera_id,
                     "source": "video",
                     "video_name": file.filename,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": timestamp_utc(),
                     "counts": last_counts,
-                    "slots": [
-                        {
-                            "id": item["index"],
-                            "state": item["state"],
-                            "confidence": item["confidence"],
-                            "probability_occupied": item["probability_occupied"],
-                        }
-                        for item in last["results"]
-                    ],
+                    **summary(
+                        last_counts,
+                        last["results"],
+                        processed_frames=frame_index,
+                        processed_inferences=processed_inferences,
+                        inference_interval=inference_interval,
+                    ),
                     "timeline": timeline,
-                    "processed_frames": frame_index,
-                    "processed_inferences": processed_inferences,
-                    "inference_interval": inference_interval,
                 }
 
                 saved = True
@@ -413,6 +456,40 @@ def create_app(detector=None, store=None):
                 "X-Accel-Buffering": "no",
             },
         )
+
+    @app.post("/api/detect")
+    def detect():
+        file = request.files.get("image")
+        if file is None or file.filename == "":
+            return jsonify({"error": "Thiếu file ảnh (field 'image')."}), 400
+
+        frame = cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
+        if frame is None:
+            return jsonify({"error": "Không đọc được ảnh. Hãy dùng JPG hoặc PNG."}), 400
+
+        try:
+            output = classify_frame_chunked(detector, frame)
+        except Exception:
+            logger.exception("Lỗi khi nhận diện ảnh")
+            return jsonify({"error": "Lỗi khi chạy model."}), 500
+
+        counts = ParkingCounter.count_slots(output["results"], detector.slots)
+        record = {
+            "camera_id": camera_id,
+            "source": "image",
+            "created_at": timestamp_utc(),
+            "counts": counts,
+            **summary(counts, output["results"]),
+        }
+
+        saved = True
+        try:
+            store.save(record)
+        except Exception:
+            logger.exception("Không lưu được kết quả vào MongoDB")
+            saved = False
+
+        return jsonify({**record, "saved": saved})
 
     @app.get("/api/status")
     def status():
