@@ -122,6 +122,7 @@
   <section class="card">
     <h2>Báo cáo</h2>
     <p class="legend">Xuất các kết quả đã lưu thành file CSV.</p>
+    <div id="run-report" style="margin-bottom:14px"></div>
     <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px">
       <a href="/api/report.csv" download><button type="button">Tải báo cáo CSV</button></a>
       <a href="/api/report.csv?delimiter=;" download><button type="button">CSV cho Excel tiếng Việt</button></a>
@@ -389,6 +390,72 @@ function appendTimelineItem(item) {
   body.appendChild(tr);
 }
 
+function renderRunReport(record) {
+  const box = document.getElementById("run-report");
+  if (!box || !record || !record.counts) return;
+  const c = record.counts;
+  const known = (c.empty || 0) + (c.occupied || 0);
+  const timeline = Array.isArray(record.timeline) ? record.timeline : [];
+  const rows = [
+    ["Ngu\u1ed3n video", record.video_name || "-"],
+    ["Th\u1eddi \u0111i\u1ec3m l\u01b0u (UTC)", record.created_at || "-"],
+    ["S\u1ed1 khung h\u00ecnh \u0111\u00e3 x\u1eed l\u00fd", record.processed_frames ?? "-"],
+    ["S\u1ed1 l\u1ea7n nh\u1eadn di\u1ec7n", record.processed_inferences ?? "-"],
+    ["Nh\u1eadn di\u1ec7n m\u1ed7i (khung h\u00ecnh)", record.inference_interval ?? "-"],
+    ["Th\u1eddi \u0111i\u1ec3m nh\u1eadn di\u1ec7n cu\u1ed1i (gi\u00e2y)", timeline.length ? timeline[timeline.length - 1].time_sec : "-"],
+    ["S\u1ed1 m\u1ed1c trong timeline", timeline.length],
+    ["T\u1ed5ng s\u1ed1 \u00f4 c\u1ea5u h\u00ecnh", c.configured ?? "-"],
+    ["\u00d4 tr\u1ed1ng", c.empty ?? 0],
+    ["\u00d4 c\u00f3 xe", c.occupied ?? 0],
+    ["Ch\u01b0a ch\u1eafc ch\u1eafn", c.unknown ?? 0],
+    ["L\u1ed7i", c.invalid ?? 0],
+    ["T\u1ef7 l\u1ec7 \u00f4 tr\u1ed1ng (nh\u00f3m \u0111\u00e3 x\u00e1c \u0111\u1ecbnh)", known ? ((c.empty / known) * 100).toFixed(1) + "%" : "-"],
+  ];
+  if (typeof record.saved === "boolean") {
+    rows.push(["L\u01b0u v\u00e0o c\u01a1 s\u1edf d\u1eef li\u1ec7u", record.saved ? "\u0110\u00e3 l\u01b0u" : "Kh\u00f4ng l\u01b0u \u0111\u01b0\u1ee3c"]);
+  }
+  const table = document.createElement("table");
+  const head = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  ["Th\u00f4ng tin", "Gi\u00e1 tr\u1ecb"].forEach((text) => {
+    const th = document.createElement("th");
+    th.textContent = text;
+    headRow.appendChild(th);
+  });
+  head.appendChild(headRow);
+  const body = document.createElement("tbody");
+  rows.forEach(([label, value]) => {
+    const tr = document.createElement("tr");
+    [label, value].forEach((text) => {
+      const td = document.createElement("td");
+      td.textContent = text;
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+  table.append(head, body);
+  const heading = document.createElement("h3");
+  heading.textContent = "K\u1ebft qu\u1ea3 l\u1ea7n ch\u1ea1y video g\u1ea7n nh\u1ea5t";
+  box.replaceChildren(heading, table);
+}
+
+async function loadLatestRunReport() {
+  const box = document.getElementById("run-report");
+  try {
+    const response = await fetch("/api/status");
+    const data = await response.json();
+    if (response.ok && data.latest && data.latest.source === "video") {
+      renderRunReport(data.latest);
+      return;
+    }
+  } catch (err) {
+    /* giu nguyen noi dung hien tai */
+  }
+  if (box && !box.children.length) {
+    box.textContent = "Ch\u01b0a c\u00f3 k\u1ebft qu\u1ea3 l\u1ea7n ch\u1ea1y video.";
+  }
+}
+
 async function consumeVideoStream(response) {
   if (!response.body) throw new Error("Trình duyệt không hỗ trợ nhận kết quả video theo luồng.");
 
@@ -463,6 +530,7 @@ document.getElementById("video-form").addEventListener("submit", async (event) =
     msg.textContent = "Đang xử lý video...";
     const data = await consumeVideoStream(res);
     applyRecord(data);
+    renderRunReport(data);
     const counts = data.counts;
     const known = counts.empty + counts.occupied;
     const availability = known ? ` Tỷ lệ ô trống trong nhóm đã xác định: ${((counts.empty / known) * 100).toFixed(1)}%.` : "";
@@ -494,6 +562,7 @@ loadReportInsights();
 setInterval(loadStatus, 5000);
 setInterval(loadHistory, 30000);
 setInterval(loadReportInsights, 60000);
+loadLatestRunReport();
 </script>
 </body>
 </html>
