@@ -3,16 +3,24 @@
 ## 1. Chạy local (kiểm tra trước khi build image)
 
 ```bash
-pip install -r web/requirements-web.txt
-MODEL_PATH=models/parking_cnn.keras python -c "from web.app import create_app; create_app().run(port=8000)"
-# Hoặc: gunicorn -w 1 -b 0.0.0.0:8000 'web.app:create_app()'
+python -m pip install -r web/requirements-web.txt
+python -c "from web.app import create_app; create_app().run(host='127.0.0.1', port=8000)"
 ```
 
-Mở http://localhost:8000. Không đặt `MONGO_URI` thì kết quả chỉ lưu trong bộ nhớ.
+Mở http://localhost:8000. Lệnh Flask ở trên chạy được trên Windows, macOS và Linux
+để kiểm tra local. Khi chạy production trên Linux, có thể dùng Gunicorn:
+
+```bash
+gunicorn -w 1 -b 0.0.0.0:8000 'web.app:create_app()'
+```
+
+Không đặt `MONGO_URI` thì kết quả chỉ lưu trong bộ nhớ.
 
 ## 2. Build và đẩy image lên Docker Hub
 
-Chạy từ thư mục gốc repo, sau khi có `models/parking_cnn.keras` trên máy (file này bị `.gitignore` nên không có trên GitHub).
+Chạy từ thư mục gốc repo. Build context phải có `models/parking_cnn.keras`;
+file model hiện được theo dõi trong repository này. Nếu dùng bản sao/fork không
+có model, hãy đặt model tại đường dẫn đó trước khi build image.
 
 ```bash
 docker build -t <dockerhub_user>/car-parking-dashboard:latest .
@@ -59,7 +67,7 @@ Lưu ý: gói miễn phí của Render ngủ sau một thời gian không dùng 
 ## API
 
 - `GET /` giao diện dashboard.
-- `POST /api/detect` form-data field `image` (JPG/PNG, tối đa 10 MB). Trả về số ô trống/có xe và trạng thái từng ô; lưu vào MongoDB.
+- `POST /api/video` form-data field `video` (tối đa 60 MB), tùy chọn `every_sec` (mặc định 0,1 giây) và `max_frames`. Trả về luồng NDJSON gồm từng khung hình đã vẽ trạng thái, thống kê và kết quả cuối; lưu kết quả vào MongoDB nếu cấu hình.
 - `GET /api/status` kết quả gần nhất.
 - `GET /api/history?limit=50` lịch sử (tối đa 200).
 - `GET /api/slots` danh sách ô và trạng thái lưu trữ.

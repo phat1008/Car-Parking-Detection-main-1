@@ -1,22 +1,44 @@
 import argparse
 import json
 from pathlib import Path
+
 import cv2
-import numpy as np
-import tensorflow as tf
 import joblib
-from sklearn.metrics import classification_report, confusion_matrix, roc_curve, precision_recall_curve, accuracy_score, precision_recall_fscore_support
-from skimage.feature import hog
 import matplotlib.pyplot as plt
-import seaborn as sns
+import numpy as np
 import pandas as pd
+import seaborn as sns
+import tensorflow as tf
+from skimage.feature import hog
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    precision_recall_curve,
+    precision_recall_fscore_support,
+    roc_curve,
+)
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Đánh giá mô hình bãi đỗ xe")
-    parser.add_argument("--model", type=str, required=True, help="Đường dẫn tới file mô hình (.keras hoặc .joblib)")
-    parser.add_argument("--data", type=str, required=True, help="Đường dẫn tới thư mục test hoặc file CSV chứa dữ liệu test")
-    parser.add_argument("--output", type=str, default="reports/metrics/eval_result", help="Thư mục lưu kết quả đánh giá")
+    parser.add_argument(
+        "--model", type=str, required=True, help="Đường dẫn tới file mô hình (.keras hoặc .joblib)"
+    )
+    parser.add_argument(
+        "--data",
+        type=str,
+        required=True,
+        help="Đường dẫn tới thư mục test hoặc file CSV chứa dữ liệu test",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="reports/metrics/eval_result",
+        help="Thư mục lưu kết quả đánh giá",
+    )
     return parser.parse_args()
+
 
 def load_model(model_path):
     path = Path(model_path)
@@ -25,11 +47,12 @@ def load_model(model_path):
     else:
         return joblib.load(path), "joblib"
 
+
 def evaluate():
     args = parse_args()
     model, model_type = load_model(args.model)
     output_dir = Path(args.output)
-    
+
     # Tạo cấu trúc thư mục báo cáo theo yêu cầu Stage 12
     output_dir.mkdir(parents=True, exist_ok=True)
     misclassified_dir = output_dir / "misclassified"
@@ -46,7 +69,7 @@ def evaluate():
     images = []
     labels = []
     image_paths = []
-    
+
     for category in ["empty", "not_empty"]:
         cat_dir = test_dir / category
         if cat_dir.exists():
@@ -94,7 +117,7 @@ def evaluate():
 
     # Tính toán các chỉ số
     acc = accuracy_score(y_true, y_pred)
-    precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred, average='binary')
+    precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred, average="binary")
     report = classification_report(y_true, y_pred, target_names=["empty", "occupied"])
     conf_matrix = confusion_matrix(y_true, y_pred)
 
@@ -109,14 +132,21 @@ def evaluate():
         "accuracy": float(acc),
         "precision": float(precision),
         "recall": float(recall),
-        "f1_score": float(f1)
+        "f1_score": float(f1),
     }
     with open(output_dir / "metrics.json", "w", encoding="utf-8") as f:
         json.dump(metrics_data, f, indent=4)
 
     # 3. Lưu Confusion Matrix plot
     plt.figure(figsize=(6, 5))
-    sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", xticklabels=["empty", "occupied"], yticklabels=["empty", "occupied"])
+    sns.heatmap(
+        conf_matrix,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        xticklabels=["empty", "occupied"],
+        yticklabels=["empty", "occupied"],
+    )
     plt.xlabel("Predicted")
     plt.ylabel("Actual")
     plt.title("Confusion Matrix")
@@ -126,8 +156,8 @@ def evaluate():
     # 4. Lưu ROC Curve & Precision-Recall Curve
     fpr, tpr, _ = roc_curve(y_true, y_probs)
     plt.figure(figsize=(6, 5))
-    plt.plot(fpr, tpr, label=f"ROC Curve")
-    plt.plot([0, 1], [0, 1], 'k--')
+    plt.plot(fpr, tpr, label="ROC Curve")
+    plt.plot([0, 1], [0, 1], "k--")
     plt.xlabel("False Positive Rate")
     plt.ylabel("True Positive Rate")
     plt.title("ROC Curve")
@@ -145,19 +175,23 @@ def evaluate():
 
     # 5. Lưu wrong_predictions.csv và gom ảnh dự đoán sai / confidence thấp
     wrong_records = []
-    for idx, (path, true_lbl, pred_lbl, prob) in enumerate(zip(image_paths, y_true, y_pred, y_probs)):
+    for idx, (path, true_lbl, pred_lbl, prob) in enumerate(
+        zip(image_paths, y_true, y_pred, y_probs)
+    ):
         confidence = float(max(prob, 1 - prob))
         img_original = cv2.imread(str(path))
-        
+
         # Ghi nhận các trường hợp dự đoán sai hoặc độ tin cậy thấp (< 0.6)
         if true_lbl != pred_lbl or confidence < 0.60:
-            wrong_records.append({
-                "image_path": str(path),
-                "true_label": "occupied" if true_lbl == 1 else "empty",
-                "predicted_label": "occupied" if pred_lbl == 1 else "empty",
-                "confidence": round(confidence, 4)
-            })
-            
+            wrong_records.append(
+                {
+                    "image_path": str(path),
+                    "true_label": "occupied" if true_lbl == 1 else "empty",
+                    "predicted_label": "occupied" if pred_lbl == 1 else "empty",
+                    "confidence": round(confidence, 4),
+                }
+            )
+
             # Phân loại lưu vào thư mục misclassified tương ứng
             if confidence < 0.60:
                 save_path = misclassified_dir / "low_confidence" / path.name
@@ -165,14 +199,15 @@ def evaluate():
                 save_path = misclassified_dir / "false_occupied" / path.name
             else:
                 save_path = misclassified_dir / "false_empty" / path.name
-                
+
             if img_original is not None:
                 cv2.imwrite(str(save_path), img_original)
 
     df_wrong = pd.DataFrame(wrong_records)
     df_wrong.to_csv(output_dir / "wrong_predictions.csv", index=False)
-    
+
     print(f"[Success] Reports and error analysis images saved to: {output_dir}")
+
 
 if __name__ == "__main__":
     evaluate()

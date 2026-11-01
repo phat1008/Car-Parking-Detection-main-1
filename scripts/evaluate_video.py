@@ -59,9 +59,7 @@ def evaluate_video(gt_path, pred_path):
     )
 
     if merged.empty:
-        raise ValueError(
-            "No matching frame/slot_id rows between ground truth and predictions"
-        )
+        raise ValueError("No matching frame/slot_id rows between ground truth and predictions")
 
     merged["label_gt"] = normalize_labels(merged["label_gt"])
     merged["label_pred"] = normalize_labels(merged["label_pred"])
@@ -70,12 +68,8 @@ def evaluate_video(gt_path, pred_path):
     correct_predictions = (merged["label_gt"] == merged["label_pred"]).sum()
     total_occupied_gt = (merged["label_gt"] == "occupied").sum()
     total_empty_gt = (merged["label_gt"] == "empty").sum()
-    false_empty = (
-        (merged["label_gt"] == "occupied") & (merged["label_pred"] == "empty")
-    ).sum()
-    false_occupied = (
-        (merged["label_gt"] == "empty") & (merged["label_pred"] == "occupied")
-    ).sum()
+    false_empty = ((merged["label_gt"] == "occupied") & (merged["label_pred"] == "empty")).sum()
+    false_occupied = ((merged["label_gt"] == "empty") & (merged["label_pred"] == "occupied")).sum()
 
     return {
         "total_evaluated_samples": int(total_samples),

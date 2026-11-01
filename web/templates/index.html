@@ -51,6 +51,8 @@
     .msg { font-size:14px; min-height:20px; }
     .msg.error { color:#f87171; }
     .msg.ok { color:#4ade80; }
+    .processed-preview { margin:16px 0; }
+    .processed-preview img { display:block; width:100%; max-height:560px; object-fit:contain; background:#0b0d12; border-radius:8px; }
     table { width:100%; border-collapse:collapse; font-size:14px; }
     th, td { text-align:left; padding:8px; border-bottom:1px solid #262a33; }
     th { color:var(--muted); font-weight:600; }
@@ -84,22 +86,16 @@
   </section>
 
   <section class="card">
-    <h2>Nhận diện từ ảnh</h2>
-    <form id="upload-form">
-      <input type="file" name="image" id="image-input" accept="image/jpeg,image/png" required>
-      <button type="submit" id="submit-btn">Nhận diện</button>
-    </form>
-    <p class="msg" id="upload-msg"></p>
-  </section>
-
-  <section class="card">
     <h2>Nhận diện từ video</h2>
     <form id="video-form">
       <input type="file" name="video" id="video-input" accept="video/mp4,video/quicktime,video/x-msvideo" required>
-      <label class="legend">Mỗi <input type="number" id="every-sec" value="2" min="0.5" max="30" step="0.5" style="width:70px"> giây lấy 1 khung hình</label>
       <button type="submit" id="video-btn">Chạy video</button>
     </form>
     <p class="msg" id="video-msg"></p>
+    <div class="processed-preview" id="processed-preview" hidden>
+      <img id="processed-frame" alt="Khung hình video đã xử lý">
+      <p class="legend" id="processed-frame-time"></p>
+    </div>
     <table>
       <thead><tr><th>Thời điểm (giây)</th><th>Trống</th><th>Có xe</th><th>Không chắc chắn</th></tr></thead>
       <tbody id="timeline-body"><tr><td colspan="4">Chưa có dữ liệu video.</td></tr></tbody>
@@ -108,7 +104,7 @@
 
   <section class="card">
     <h2>Báo cáo</h2>
-    <p class="legend">Xuất toàn bộ kết quả đã lưu (ảnh và video) thành file CSV, mỗi dòng là một lần nhận diện hoặc một khung hình video.</p>
+    <p class="legend">Xuất các kết quả đã lưu thành file CSV.</p>
     <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px">
       <a href="/api/report.csv" download><button type="button">Tải báo cáo CSV</button></a>
       <a href="/api/report.csv?delimiter=;" download><button type="button">CSV cho Excel tiếng Việt</button></a>
@@ -229,77 +225,104 @@ async function loadHistory() {
   }
 }
 
-document.getElementById("upload-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const input = document.getElementById("image-input");
-  const btn = document.getElementById("submit-btn");
-  const msg = document.getElementById("upload-msg");
-  if (!input.files.length) return;
-
-  const form = new FormData();
-  form.append("image", input.files[0]);
-  btn.disabled = true;
-  msg.className = "msg";
-  msg.textContent = "Đang nhận diện...";
-  try {
-    const res = await fetch("/api/detect", { method: "POST", body: form });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Lỗi không xác định");
-    applyRecord(data);
-    msg.className = "msg ok";
-    msg.textContent = data.saved ? "Đã nhận diện và lưu kết quả." : "Đã nhận diện nhưng KHÔNG lưu được vào cơ sở dữ liệu.";
-    loadHistory();
-  } catch (err) {
-    msg.className = "msg error";
-    msg.textContent = err.message;
-  } finally {
-    btn.disabled = false;
-  }
-});
-
-function renderTimeline(timeline) {
+function clearTimeline() {
   const body = document.getElementById("timeline-body");
   body.replaceChildren();
-  if (!timeline || timeline.length === 0) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = '<td colspan="4">Không có dữ liệu.</td>';
-    body.appendChild(tr);
-    return;
+  const tr = document.createElement("tr");
+  tr.innerHTML = '<td colspan="4">Đang chờ xử lý video.</td>';
+  body.appendChild(tr);
+}
+
+function appendTimelineItem(item) {
+  const body = document.getElementById("timeline-body");
+  if (body.rows.length === 1 && body.rows[0].cells.length === 1) body.replaceChildren();
+  const tr = document.createElement("tr");
+  [item.time_sec, item.counts.empty, item.counts.occupied, item.counts.unknown].forEach((value) => {
+    const td = document.createElement("td");
+    td.textContent = value;
+    tr.appendChild(td);
+  });
+  body.appendChild(tr);
+}
+
+async function consumeVideoStream(response) {
+  if (!response.body) throw new Error("Trình duyệt không hỗ trợ nhận kết quả video theo luồng.");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let completed = null;
+  let playbackStartedAt = null;
+
+  async function handleLine(line) {
+    if (!line.trim()) return;
+    const event = JSON.parse(line);
+    if (event.type === "frame") {
+      if (playbackStartedAt === null) {
+        playbackStartedAt = performance.now() - event.time_sec * 1000;
+      }
+      const targetTime = playbackStartedAt + event.time_sec * 1000;
+      const delay = targetTime - performance.now();
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+
+      document.getElementById("processed-preview").hidden = false;
+      const image = document.getElementById("processed-frame");
+      image.src = event.preview;
+      await image.decode();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      setText("processed-frame-time", `Khung hình ${event.frame} · ${event.time_sec} giây`);
+      renderCounts(event.counts);
+      setText("updated-at", `Đang xử lý video · ${event.time_sec} giây · ${event.inference ? "đang nhận diện" : "đang phát"}`);
+      if (event.inference) appendTimelineItem(event);
+    } else if (event.type === "error") {
+      throw new Error(event.error);
+    } else if (event.type === "complete") {
+      completed = event;
+    }
   }
-  for (const item of timeline) {
-    const tr = document.createElement("tr");
-    [item.time_sec, item.counts.empty, item.counts.occupied, item.counts.unknown].forEach((v) => {
-      const td = document.createElement("td");
-      td.textContent = v;
-      tr.appendChild(td);
-    });
-    body.appendChild(tr);
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+    for (const line of lines) await handleLine(line);
+    if (done) break;
   }
+  if (buffer.trim()) await handleLine(buffer);
+  if (!completed) throw new Error("Luồng xử lý video kết thúc bất thường.");
+  return completed;
 }
 
 document.getElementById("video-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const input = document.getElementById("video-input");
-  const everySec = document.getElementById("every-sec").value;
   const btn = document.getElementById("video-btn");
   const msg = document.getElementById("video-msg");
   if (!input.files.length) return;
 
   const form = new FormData();
   form.append("video", input.files[0]);
-  form.append("every_sec", everySec);
+  form.append("inference_interval", "2");
+  document.getElementById("processed-preview").hidden = true;
+  document.getElementById("processed-frame").removeAttribute("src");
+  clearTimeline();
   btn.disabled = true;
   msg.className = "msg";
-  msg.textContent = "Đang xử lý video, có thể mất vài phút...";
+  msg.textContent = "Đang tải video lên...";
   try {
     const res = await fetch("/api/video", { method: "POST", body: form });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Lỗi không xác định");
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || "Lỗi không xác định");
+    }
+    msg.textContent = "Đang xử lý video...";
+    const data = await consumeVideoStream(res);
     applyRecord(data);
-    renderTimeline(data.timeline);
     msg.className = "msg ok";
     msg.textContent = (data.saved ? "Đã xử lý " : "Đã xử lý (KHÔNG lưu được MongoDB) ")
-      + data.timeline.length + " khung hình từ " + data.video_name + ".";
+      + data.processed_frames + " khung hình, " + data.processed_inferences
+      + " lần nhận diện từ " + data.video_name + ".";
     loadHistory();
   } catch (err) {
     msg.className = "msg error";

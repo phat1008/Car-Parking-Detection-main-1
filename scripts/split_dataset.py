@@ -1,8 +1,7 @@
-import os
-import shutil
 import random
-from pathlib import Path
+import shutil
 from collections import defaultdict
+from pathlib import Path
 
 # Đường dẫn thư mục
 BASE_DIR = Path(".")
@@ -19,15 +18,18 @@ TEST_RATIO = 0.1
 CLASSES = ["empty", "not_empty"]
 VALID_EXTS = {".jpg", ".jpeg", ".png"}
 
+
 def get_group(path: Path) -> str:
     """Lấy phần trước dấu '_' làm mã nhóm (group ID) từ tên file."""
     return path.stem.split("_")[0]
+
 
 def create_output_dirs():
     """Tạo thư mục đích nếu chưa tồn tại."""
     for split_dir in [TRAIN_DIR, VAL_DIR, TEST_DIR]:
         for cls_name in CLASSES:
             (split_dir / cls_name).mkdir(parents=True, exist_ok=True)
+
 
 def main():
     print("=== BẮT ĐẦU CHIA DATASET THEO NHÓM VIDEO ===")
@@ -40,7 +42,7 @@ def main():
         cls_dir = DATASET_DIR / cls_name
         if not cls_dir.exists():
             continue
-        
+
         for file_path in cls_dir.iterdir():
             if file_path.suffix.lower() in VALID_EXTS:
                 group_id = get_group(file_path)
@@ -63,7 +65,7 @@ def main():
         splits = [
             ("train", train_groups, TRAIN_DIR),
             ("val", val_groups, VAL_DIR),
-            ("test", test_groups, TEST_DIR)
+            ("test", test_groups, TEST_DIR),
         ]
 
         print(f"\n--- Class: [{cls_name}] (Tổng số nhóm video: {total_groups}) ---")
@@ -82,6 +84,7 @@ def main():
             print(f" -> {split_name:<5}: {len(group_list):<3} nhóm | {count_files:<5} ảnh")
 
     print("\n=== HOÀN THÀNH CHIA DATASET THÀNH CÔNG ===")
+
 
 if __name__ == "__main__":
     main()

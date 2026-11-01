@@ -1,10 +1,9 @@
-from pathlib import Path
 import json
+from pathlib import Path
 
 import tensorflow as tf
 from tensorflow.keras import layers, models
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
-
 
 TRAIN_DIR = Path("data/train")
 VAL_DIR = Path("data/val")
@@ -26,26 +25,20 @@ def create_small_cnn():
     model = models.Sequential(
         [
             layers.Input(shape=(64, 64, 3)),
-
             layers.RandomFlip("horizontal"),
             layers.RandomRotation(0.05),
             layers.RandomZoom(0.10),
             layers.RandomContrast(0.10),
-
             layers.Rescaling(1.0 / 255.0),
-
             layers.Conv2D(32, (3, 3), padding="same", activation="relu"),
             layers.BatchNormalization(),
             layers.MaxPooling2D((2, 2)),
-
             layers.Conv2D(64, (3, 3), padding="same", activation="relu"),
             layers.BatchNormalization(),
             layers.MaxPooling2D((2, 2)),
-
             layers.Conv2D(128, (3, 3), padding="same", activation="relu"),
             layers.BatchNormalization(),
             layers.GlobalAveragePooling2D(),
-
             layers.Dense(64, activation="relu"),
             layers.Dropout(0.4),
             layers.Dense(1, activation="sigmoid"),
@@ -147,10 +140,7 @@ def main():
                     key: [float(value) for value in values]
                     for key, values in history.history.items()
                 },
-                "test_metrics": {
-                    key: float(value)
-                    for key, value in test_metrics.items()
-                },
+                "test_metrics": {key: float(value) for key, value in test_metrics.items()},
             },
             file,
             indent=2,
@@ -164,10 +154,7 @@ def main():
         "classes": CLASS_NAMES,
         "positive_class": "not_empty",
         "production_threshold": 0.60,
-        "test_metrics": {
-            key: float(value)
-            for key, value in test_metrics.items()
-        },
+        "test_metrics": {key: float(value) for key, value in test_metrics.items()},
     }
 
     with METADATA_PATH.open("w", encoding="utf-8") as file:

@@ -1,8 +1,88 @@
 from datetime import datetime as DateTime
 
+import numpy as np
 import pytest
 
 import scripts.run as run
+
+
+def test_prefetched_video_reader_preserves_order_and_releases_capture():
+    class FakeCapture:
+        def __init__(self):
+            self.frames = ["frame-1", "frame-2", "frame-3"]
+            self.released = False
+
+        def read(self):
+            if self.frames:
+                return True, self.frames.pop(0)
+            return False, None
+
+        def release(self):
+            self.released = True
+
+    capture = FakeCapture()
+    reader = run.PrefetchedVideoReader(capture, buffer_size=1)
+
+    try:
+        assert [reader.read() for _ in range(3)] == [
+            (True, "frame-1"),
+            (True, "frame-2"),
+            (True, "frame-3"),
+        ]
+        assert reader.read() == (False, None)
+    finally:
+        reader.close()
+
+    assert capture.released
+
+
+def test_prefetched_video_reader_propagates_capture_errors():
+    class FakeCapture:
+        def read(self):
+            raise OSError("decoder failed")
+
+        def release(self):
+            pass
+
+    reader = run.PrefetchedVideoReader(FakeCapture(), buffer_size=1)
+
+    try:
+        with pytest.raises(OSError, match="decoder failed"):
+            reader.read()
+    finally:
+        reader.close()
+
+
+def test_draw_results_shows_small_white_slot_id_without_background(monkeypatch):
+    labels = []
+    put_text = run.cv2.putText
+
+    def record_text(*args, **kwargs):
+        labels.append(args)
+        return put_text(*args, **kwargs)
+
+    monkeypatch.setattr(run.cv2, "putText", record_text)
+    frame = np.zeros((180, 320, 3), dtype=np.uint8)
+    results = [{"index": 104, "box": (20, 30, 40, 20), "state": "occupied"}]
+
+    output = run.draw_results(
+        frame,
+        results,
+        {
+            "configured": 1,
+            "empty": 0,
+            "occupied": 1,
+            "unknown": 0,
+            "invalid": 0,
+        },
+        30.0,
+    )
+
+    id_label = next(call for call in labels if call[1] == "104")
+    assert output.shape == frame.shape
+    assert id_label[4] == 0.5
+    assert id_label[5] == (255, 255, 255)
+    assert id_label[6] == 1
 
 
 def test_create_output_dir_uses_a_unique_directory(tmp_path, monkeypatch):
@@ -30,6 +110,18 @@ def test_main_rejects_invalid_confidence(confidence, monkeypatch):
     monkeypatch.setattr(
         "sys.argv",
         ["run.py", "--confidence", confidence],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        run.main()
+
+    assert exc_info.value.code == 2
+
+
+def test_main_rejects_invalid_prefetch_size(monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        ["run.py", "--prefetch-frames", "0"],
     )
 
     with pytest.raises(SystemExit) as exc_info:

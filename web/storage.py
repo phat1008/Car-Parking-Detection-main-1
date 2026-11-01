@@ -47,11 +47,7 @@ class DetectionStore:
 
     def history(self, limit=50):
         if self._collection is not None:
-            cursor = (
-                self._collection.find({}, {"_id": 0})
-                .sort("created_at", -1)
-                .limit(limit)
-            )
+            cursor = self._collection.find({}, {"_id": 0}).sort("created_at", -1).limit(limit)
             return list(cursor)
 
         with self._lock:

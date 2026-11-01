@@ -4,11 +4,7 @@ class ParkingCounter:
         enabled_ids = None
 
         if slots_config is not None:
-            enabled_ids = {
-                slot["id"]
-                for slot in slots_config
-                if slot.get("enabled", True)
-            }
+            enabled_ids = {slot["id"] for slot in slots_config if slot.get("enabled", True)}
 
         counts = {
             "configured": 0,
@@ -25,10 +21,7 @@ class ParkingCounter:
                 item.get("id"),
             )
 
-            if (
-                enabled_ids is not None
-                and slot_id not in enabled_ids
-            ):
+            if enabled_ids is not None and slot_id not in enabled_ids:
                 continue
 
             counts["configured"] += 1

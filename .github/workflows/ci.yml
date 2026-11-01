@@ -35,16 +35,16 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Run black (check only)
-        run: black --check --line-length=100 *.py tests/*.py
+        run: black --check --line-length=100 *.py tests/*.py src/*.py scripts/*.py web/*.py
 
       - name: Run isort (check only)
-        run: isort --check --profile=black --line-length=100 *.py tests/*.py
+        run: isort --check --profile=black --line-length=100 *.py tests/*.py src/*.py scripts/*.py web/*.py
 
       - name: Run flake8
-        run: flake8 *.py tests/*.py
+        run: flake8 *.py tests/*.py src/*.py scripts/*.py web/*.py
 
       - name: Run mypy
-        run: mypy *.py
+        run: mypy --explicit-package-bases *.py src scripts web
 
   tests:
     runs-on: ubuntu-latest
