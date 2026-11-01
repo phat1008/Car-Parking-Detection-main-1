@@ -62,7 +62,7 @@ def _encode_processed_frame(frame, results, counts, fps=None):
         (text_width, text_height), baseline = cv2.getTextSize(
             slot_id,
             font,
-            0.3,
+            0.22,
             1,
         )
         label_x = max(0, min(x + 2, image_width - text_width - 1))
@@ -75,7 +75,7 @@ def _encode_processed_frame(frame, results, counts, fps=None):
             slot_id,
             (label_x, text_y),
             font,
-            0.3,
+            0.22,
             (255, 255, 255),
             1,
             cv2.LINE_AA,

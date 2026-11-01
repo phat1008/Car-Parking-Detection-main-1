@@ -244,7 +244,7 @@ def test_processed_frame_uses_compact_slot_labels_and_status_legend(monkeypatch)
     assert preview.startswith("data:image/jpeg;base64,")
     assert "2" in labels
     id_label = next(call for call in text_calls if call[1] == "2")
-    assert id_label[4] == 0.3
+    assert id_label[4] == 0.22
     assert id_label[5] == (255, 255, 255)
     assert id_label[6] == 1
     assert "Co xe: 3/10" in labels
