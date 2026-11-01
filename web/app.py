@@ -18,7 +18,7 @@ if str(BASE_DIR) not in sys.path:
 from src.parking_counter import ParkingCounter  # noqa: E402
 from web.inference import classify_frame_chunked, sample_video_frames  # noqa: E402
 from web.layout import build_layout  # noqa: E402
-from web.report import build_history_csv, find_latest_run, load_run_report  # noqa: E402
+from web.report import build_history_csv  # noqa: E402
 from web.storage import DetectionStore  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -82,16 +82,6 @@ def create_app(detector=None, store=None):
             mimetype="text/csv; charset=utf-8",
             headers={"Content-Disposition": "attachment; filename=parking_report.csv"},
         )
-
-    @app.get("/api/report/latest-run")
-    def report_latest_run():
-        run_dir = find_latest_run(BASE_DIR)
-        if run_dir is None:
-            return jsonify({
-                "error": "Không có run nào trong reports/runs/ trên máy chủ này. "
-                         "Báo cáo run chỉ có khi chạy local bằng scripts/run.py."
-            }), 404
-        return jsonify(load_run_report(run_dir))
 
     @app.get("/api/layout")
     def layout_view():

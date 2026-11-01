@@ -112,10 +112,7 @@
     <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px">
       <a href="/api/report.csv" download><button type="button">Tải báo cáo CSV</button></a>
       <a href="/api/report.csv?delimiter=;" download><button type="button">CSV cho Excel tiếng Việt</button></a>
-      <button type="button" id="latest-run-btn">Xem run mới nhất</button>
     </div>
-    <p class="msg" id="report-msg"></p>
-    <pre id="run-report" style="white-space:pre-wrap; font-size:13px; color:var(--muted)"></pre>
   </section>
 
   <section class="card">
@@ -309,25 +306,6 @@ document.getElementById("video-form").addEventListener("submit", async (event) =
     msg.textContent = err.message;
   } finally {
     btn.disabled = false;
-  }
-});
-
-document.getElementById("latest-run-btn").addEventListener("click", async () => {
-  const msg = document.getElementById("report-msg");
-  const out = document.getElementById("run-report");
-  msg.className = "msg";
-  msg.textContent = "Đang tải...";
-  out.textContent = "";
-  try {
-    const res = await fetch("/api/report/latest-run");
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Lỗi không xác định");
-    msg.className = "msg ok";
-    msg.textContent = "Run: " + data.run + " (" + data.frame_statistics_rows + " dòng thống kê khung hình)";
-    out.textContent = JSON.stringify(data.summary, null, 2);
-  } catch (err) {
-    msg.className = "msg error";
-    msg.textContent = err.message;
   }
 });
 
