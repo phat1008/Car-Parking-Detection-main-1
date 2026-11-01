@@ -262,3 +262,16 @@ def test_dashboard_hides_image_recognition_and_removes_image_api():
     assert "Nhận diện từ ảnh" not in page.get_data(as_text=True)
     assert 'id="every-sec"' not in page.get_data(as_text=True)
     assert client.post("/api/detect").status_code == 404
+
+
+def test_insights_endpoint_reads_reports_from_application_directory(tmp_path, monkeypatch):
+    app, _ = create_test_app()
+    monkeypatch.setattr(web_app, "BASE_DIR", tmp_path)
+
+    response = app.test_client().get("/api/insights")
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["model_evaluation"] is None
+    assert data["latest_run"] is None
+    assert len(data["notices"]) == 2

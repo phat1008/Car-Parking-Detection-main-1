@@ -51,6 +51,16 @@
     .msg { font-size:14px; min-height:20px; }
     .msg.error { color:#f87171; }
     .msg.ok { color:#4ade80; }
+    .msg.warning { color:#fbbf24; }
+    .notice-list { display:grid; gap:10px; }
+    .notice { border-left:4px solid #64748b; border-radius:8px; padding:12px 14px; background:#20242d; }
+    .notice h3 { margin:0 0 4px; font-size:14px; }
+    .notice p { margin:0; color:var(--muted); font-size:13px; line-height:1.5; }
+    .notice.warning { border-color:#f59e0b; }
+    .notice.success { border-color:#22c55e; }
+    .notice.error { border-color:#ef4444; }
+    .report-summary { margin-top:14px; color:var(--muted); font-size:13px; line-height:1.7; }
+    .report-summary strong { color:var(--text); }
     .processed-preview { margin:16px 0; }
     .processed-preview img { display:block; width:100%; max-height:560px; object-fit:contain; background:#0b0d12; border-radius:8px; }
     table { width:100%; border-collapse:collapse; font-size:14px; }
@@ -83,6 +93,13 @@
       <span style="color:var(--invalid)">■</span> lỗi &nbsp;
       <span style="color:var(--pending)">■</span> chưa nhận diện
     </p>
+  </section>
+
+  <section class="card">
+    <h2>Thông báo &amp; phân tích báo cáo</h2>
+    <div id="report-insights" class="notice-list" role="status" aria-live="polite">
+      <p class="legend">Đang đọc báo cáo nhận diện...</p>
+    </div>
   </section>
 
   <section class="card">
@@ -233,6 +250,83 @@ function clearTimeline() {
   body.appendChild(tr);
 }
 
+function addReportSummary(container, title, lines) {
+  const summary = document.createElement("div");
+  summary.className = "report-summary";
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  summary.appendChild(heading);
+  for (const line of lines) {
+    const row = document.createElement("div");
+    row.textContent = line;
+    summary.appendChild(row);
+  }
+  container.appendChild(summary);
+}
+
+function renderReportInsights(data) {
+  const container = document.getElementById("report-insights");
+  container.replaceChildren();
+  for (const notice of data.notices || []) {
+    const card = document.createElement("article");
+    card.className = "notice " + notice.level;
+    const heading = document.createElement("h3");
+    heading.textContent = notice.title;
+    const message = document.createElement("p");
+    message.textContent = notice.message;
+    card.append(heading, message);
+    container.appendChild(card);
+  }
+
+  const model = data.model_evaluation;
+  if (model) {
+    const classSupport = model.supports || {};
+    const modelLines = [
+      `Accuracy: ${(model.accuracy * 100).toFixed(2)}% · Precision: ${(model.precision * 100).toFixed(2)}% · Recall: ${(model.recall * 100).toFixed(2)}% · F1: ${(model.f1_score * 100).toFixed(2)}%`,
+    ];
+    if (classSupport.empty !== undefined || classSupport.occupied !== undefined) {
+      modelLines.push(
+        `Số mẫu đánh giá: ô trống ${classSupport.empty ?? 0}, ô có xe ${classSupport.occupied ?? 0}.`
+      );
+    }
+    addReportSummary(container, "Báo cáo đánh giá CNN", modelLines);
+  }
+
+  const run = data.latest_run;
+  if (run) {
+    const counts = run.counts;
+    const known = counts.empty + counts.occupied;
+    const availability = known ? ` · Tỷ lệ trống ${((counts.empty / known) * 100).toFixed(1)}%` : "";
+    const threshold = Number.isFinite(run.confidence_threshold)
+      ? ` · Ngưỡng tin cậy ${(run.confidence_threshold * 100).toFixed(0)}%`
+      : "";
+    addReportSummary(container, `Lần chạy gần nhất · ${run.run_id}`, [
+      `Nguồn: ${run.source || "không rõ"} · ${run.processed_frames} frame · ${run.processed_inferences} lần nhận diện${threshold}.`,
+      `Ô trống ${counts.empty} · Có xe ${counts.occupied} · Chưa rõ ${counts.unknown} · Lỗi ${counts.invalid}${availability}.`,
+    ]);
+  }
+}
+
+async function loadReportInsights() {
+  const container = document.getElementById("report-insights");
+  try {
+    const response = await fetch("/api/insights");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Không tải được báo cáo.");
+    renderReportInsights(data);
+  } catch (err) {
+    container.replaceChildren();
+    const card = document.createElement("article");
+    card.className = "notice error";
+    const heading = document.createElement("h3");
+    heading.textContent = "Không tải được báo cáo";
+    const message = document.createElement("p");
+    message.textContent = err.message;
+    card.append(heading, message);
+    container.appendChild(card);
+  }
+}
+
 function appendTimelineItem(item) {
   const body = document.getElementById("timeline-body");
   if (body.rows.length === 1 && body.rows[0].cells.length === 1) body.replaceChildren();
@@ -319,10 +413,21 @@ document.getElementById("video-form").addEventListener("submit", async (event) =
     msg.textContent = "Đang xử lý video...";
     const data = await consumeVideoStream(res);
     applyRecord(data);
-    msg.className = "msg ok";
-    msg.textContent = (data.saved ? "Đã xử lý " : "Đã xử lý (KHÔNG lưu được MongoDB) ")
+    const counts = data.counts;
+    const known = counts.empty + counts.occupied;
+    const availability = known ? ` Tỷ lệ ô trống trong nhóm đã xác định: ${((counts.empty / known) * 100).toFixed(1)}%.` : "";
+    const warnings = [];
+    if (counts.unknown) warnings.push(`${counts.unknown} ô chưa xác định`);
+    if (counts.invalid) warnings.push(`${counts.invalid} ô lỗi`);
+    if (!data.saved) warnings.push("không lưu được lịch sử");
+    msg.className = warnings.length ? "msg warning" : "msg ok";
+    msg.textContent = (data.saved ? "Đã xử lý " : "Đã xử lý nhưng không lưu được lịch sử. ")
       + data.processed_frames + " khung hình, " + data.processed_inferences
-      + " lần nhận diện từ " + data.video_name + ".";
+      + " lần nhận diện từ " + data.video_name + ". Kết quả ở frame cuối: "
+      + `trống ${counts.empty}, có xe ${counts.occupied}, chưa rõ ${counts.unknown}, lỗi ${counts.invalid}.`
+      + availability
+      + (warnings.length ? " Cần chú ý: " + warnings.join(", ") + "." : "")
+      + " Thống kê này không thay thế việc kiểm tra độ chính xác dự đoán.";
     loadHistory();
   } catch (err) {
     msg.className = "msg error";
@@ -335,8 +440,10 @@ document.getElementById("video-form").addEventListener("submit", async (event) =
 loadLayout();
 loadStatus();
 loadHistory();
+loadReportInsights();
 setInterval(loadStatus, 5000);
 setInterval(loadHistory, 30000);
+setInterval(loadReportInsights, 60000);
 </script>
 </body>
 </html>

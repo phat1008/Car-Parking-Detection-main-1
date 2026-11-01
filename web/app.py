@@ -20,6 +20,7 @@ if str(BASE_DIR) not in sys.path:
 from src.parking_counter import ParkingCounter  # noqa: E402
 from src.smoother import SlotSmoother  # noqa: E402
 from web.inference import classify_frame_chunked, sample_video_frames  # noqa: E402
+from web.insights import build_dashboard_insights  # noqa: E402
 from web.layout import build_layout  # noqa: E402
 from web.report import build_history_csv  # noqa: E402
 from web.storage import DetectionStore  # noqa: E402
@@ -190,6 +191,10 @@ def create_app(detector=None, store=None):
     @app.get("/healthz")
     def healthz():
         return jsonify({"status": "ok", "slots": len(detector.slots)})
+
+    @app.get("/api/insights")
+    def report_insights():
+        return jsonify(build_dashboard_insights(BASE_DIR / "reports"))
 
     @app.get("/api/slots")
     def slots():

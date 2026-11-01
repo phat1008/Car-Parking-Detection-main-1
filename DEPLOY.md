@@ -71,4 +71,5 @@ Lưu ý: gói miễn phí của Render ngủ sau một thời gian không dùng 
 - `GET /api/status` kết quả gần nhất.
 - `GET /api/history?limit=50` lịch sử (tối đa 200).
 - `GET /api/slots` danh sách ô và trạng thái lưu trữ.
+- `GET /api/insights` thông báo từ `reports/metrics/cnn` và báo cáo lần chạy mới nhất trong `reports/runs`. Nếu thư mục báo cáo không có trong môi trường triển khai, dashboard sẽ báo chưa có dữ liệu đánh giá/lần chạy.
 - `GET /healthz` kiểm tra sống.
