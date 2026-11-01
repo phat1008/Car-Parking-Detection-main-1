@@ -15,6 +15,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from src.parking_counter import ParkingCounter  # noqa: E402
+from web.layout import build_layout  # noqa: E402
 from web.storage import DetectionStore  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ def create_app(detector=None, store=None):
         store = DetectionStore.from_env()
 
     camera_id = detector.slot_manager.camera_id
+    layout = build_layout(detector.slots)
 
     @app.get("/")
     def dashboard():
@@ -60,6 +62,12 @@ def create_app(detector=None, store=None):
                 "persistent_storage": store.persistent,
             }
         )
+
+    @app.get("/api/layout")
+    def layout_view():
+        return jsonify({"columns": layout, "total_slots": sum(
+            len(lane) for col in layout for lane in col["lanes"]
+        )})
 
     @app.post("/api/detect")
     def detect():

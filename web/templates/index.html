@@ -6,24 +6,33 @@
   <title>Car Parking Dashboard</title>
   <style>
     :root { --bg:#0f1115; --card:#181b22; --text:#e7e9ee; --muted:#8a90a0;
-            --empty:#22c55e; --occupied:#ef4444; --unknown:#eab308; --invalid:#6b7280; }
+            --empty:#22c55e; --occupied:#ef4444; --unknown:#eab308; --invalid:#6b7280; --pending:#374151; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text); }
     header { padding:16px 24px; border-bottom:1px solid #262a33; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
     h1 { font-size:18px; margin:0; }
-    main { padding:24px; display:grid; gap:20px; max-width:1200px; margin:0 auto; }
+    main { padding:24px; display:grid; gap:20px; max-width:1400px; margin:0 auto; }
     .card { background:var(--card); border-radius:12px; padding:18px; }
     .card h2 { font-size:15px; margin:0 0 12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
     .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; }
     .stat { background:#20242d; border-radius:10px; padding:14px; }
     .stat .value { font-size:28px; font-weight:700; }
     .stat .label { color:var(--muted); font-size:13px; }
-    .slots { display:grid; grid-template-columns:repeat(auto-fill,minmax(64px,1fr)); gap:8px; }
-    .slot { border-radius:8px; padding:10px 4px; text-align:center; font-size:13px; font-weight:600; color:#0b0d10; }
+
+    /* Bố cục bãi đỗ: các cột nằm ngang, mỗi cột gồm 2 dãy đặt cạnh nhau */
+    .lot { display:flex; gap:12px; overflow-x:auto; padding-bottom:8px; }
+    .column { display:flex; flex-direction:column; align-items:center; gap:6px; flex:0 0 auto; }
+    .column-label { font-size:11px; color:var(--muted); }
+    .lanes { display:flex; gap:4px; }
+    .lane { display:flex; flex-direction:column; gap:3px; }
+    .slot { width:44px; height:18px; border-radius:4px; font-size:10px; font-weight:600; color:#0b0d10;
+            display:flex; align-items:center; justify-content:center; }
     .slot.empty { background:var(--empty); }
     .slot.occupied { background:var(--occupied); color:#fff; }
     .slot.unknown { background:var(--unknown); }
     .slot.invalid { background:var(--invalid); color:#fff; }
+    .slot.pending { background:var(--pending); color:var(--muted); }
+
     .legend { color:var(--muted); font-size:13px; margin-top:10px; }
     form { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
     button { background:#3b82f6; color:#fff; border:0; border-radius:8px; padding:10px 18px; font-weight:600; cursor:pointer; }
@@ -35,13 +44,12 @@
     table { width:100%; border-collapse:collapse; font-size:14px; }
     th, td { text-align:left; padding:8px; border-bottom:1px solid #262a33; }
     th { color:var(--muted); font-weight:600; }
-    .badge { font-size:12px; padding:2px 8px; border-radius:999px; background:#262a33; color:var(--muted); }
   </style>
 </head>
 <body>
 <header>
   <h1>Car Parking Dashboard</h1>
-  <span class="badge" id="storage-badge">camera: {{ camera_id }}</span>
+  <span class="legend" id="camera-label"></span>
 </header>
 
 <main>
@@ -54,12 +62,13 @@
       <div class="stat"><div class="value" id="configured-count">–</div><div class="label">Tổng ô đã cấu hình</div></div>
     </div>
     <p class="legend" id="updated-at">Chưa có dữ liệu.</p>
-    <div class="slots" id="slot-grid"></div>
+    <div class="lot" id="lot"></div>
     <p class="legend">
       <span style="color:var(--empty)">■</span> trống &nbsp;
       <span style="color:var(--occupied)">■</span> có xe &nbsp;
       <span style="color:var(--unknown)">■</span> không chắc chắn &nbsp;
-      <span style="color:var(--invalid)">■</span> lỗi
+      <span style="color:var(--invalid)">■</span> lỗi &nbsp;
+      <span style="color:var(--pending)">■</span> chưa nhận diện
     </p>
   </section>
 
@@ -82,7 +91,9 @@
 </main>
 
 <script>
-const STATE_LABELS = { empty: "Trống", occupied: "Có xe", unknown: "?", invalid: "Lỗi" };
+const STATE_LABELS = { empty: "Trống", occupied: "Có xe", unknown: "Không chắc chắn", invalid: "Lỗi" };
+let layoutColumns = [];   // [{column, lanes: [[id, ...], [id, ...]]}]
+let slotStates = {};      // id -> {state, confidence}
 
 function setText(id, value) { document.getElementById(id).textContent = value; }
 
@@ -94,21 +105,58 @@ function renderCounts(counts, createdAt) {
   setText("updated-at", createdAt ? "Cập nhật lúc: " + new Date(createdAt).toLocaleString() : "Chưa có dữ liệu.");
 }
 
-function renderSlots(slots) {
-  const grid = document.getElementById("slot-grid");
-  grid.replaceChildren();
-  for (const slot of slots) {
-    const el = document.createElement("div");
-    el.className = "slot " + slot.state;
-    el.title = `Ô ${slot.id}: ${STATE_LABELS[slot.state] || slot.state} (độ tin cậy ${(slot.confidence * 100).toFixed(1)}%)`;
-    el.textContent = slot.id;
-    grid.appendChild(el);
+function renderLot() {
+  const lot = document.getElementById("lot");
+  lot.replaceChildren();
+  for (const col of layoutColumns) {
+    const colEl = document.createElement("div");
+    colEl.className = "column";
+
+    const label = document.createElement("div");
+    label.className = "column-label";
+    label.textContent = "Cột " + col.column;
+    colEl.appendChild(label);
+
+    const lanesEl = document.createElement("div");
+    lanesEl.className = "lanes";
+    for (const lane of col.lanes) {
+      const laneEl = document.createElement("div");
+      laneEl.className = "lane";
+      for (const id of lane) {
+        const info = slotStates[id];
+        const state = info ? info.state : "pending";
+        const el = document.createElement("div");
+        el.className = "slot " + state;
+        el.title = info
+          ? `Ô ${id}: ${STATE_LABELS[state] || state} (độ tin cậy ${(info.confidence * 100).toFixed(1)}%)`
+          : `Ô ${id}: chưa nhận diện`;
+        el.textContent = id;
+        laneEl.appendChild(el);
+      }
+      lanesEl.appendChild(laneEl);
+    }
+    colEl.appendChild(lanesEl);
+    lot.appendChild(colEl);
   }
 }
 
 function applyRecord(record) {
+  slotStates = {};
+  for (const slot of record.slots) slotStates[slot.id] = slot;
   renderCounts(record.counts, record.created_at);
-  renderSlots(record.slots);
+  renderLot();
+}
+
+async function loadLayout() {
+  try {
+    const res = await fetch("/api/layout");
+    const data = await res.json();
+    layoutColumns = data.columns;
+    setText("configured-count", data.total_slots);
+    renderLot();
+  } catch (err) {
+    setText("updated-at", "Không tải được bố cục bãi đỗ.");
+  }
 }
 
 async function loadStatus() {
@@ -180,6 +228,7 @@ document.getElementById("upload-form").addEventListener("submit", async (event) 
   }
 });
 
+loadLayout();
 loadStatus();
 loadHistory();
 setInterval(loadStatus, 5000);
