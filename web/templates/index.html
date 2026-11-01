@@ -44,6 +44,7 @@
     table { width:100%; border-collapse:collapse; font-size:14px; }
     th, td { text-align:left; padding:8px; border-bottom:1px solid #262a33; }
     th { color:var(--muted); font-weight:600; }
+    input[type=number] { background:#20242d; color:var(--text); border:1px solid #262a33; border-radius:6px; padding:6px; }
   </style>
 </head>
 <body>
@@ -79,6 +80,20 @@
       <button type="submit" id="submit-btn">Nhận diện</button>
     </form>
     <p class="msg" id="upload-msg"></p>
+  </section>
+
+  <section class="card">
+    <h2>Nhận diện từ video</h2>
+    <form id="video-form">
+      <input type="file" name="video" id="video-input" accept="video/mp4,video/quicktime,video/x-msvideo" required>
+      <label class="legend">Mỗi <input type="number" id="every-sec" value="2" min="0.5" max="30" step="0.5" style="width:70px"> giây lấy 1 khung hình</label>
+      <button type="submit" id="video-btn">Chạy video</button>
+    </form>
+    <p class="msg" id="video-msg"></p>
+    <table>
+      <thead><tr><th>Thời điểm (giây)</th><th>Trống</th><th>Có xe</th><th>Không chắc chắn</th></tr></thead>
+      <tbody id="timeline-body"><tr><td colspan="4">Chưa có dữ liệu video.</td></tr></tbody>
+    </table>
   </section>
 
   <section class="card">
@@ -219,6 +234,58 @@ document.getElementById("upload-form").addEventListener("submit", async (event) 
     applyRecord(data);
     msg.className = "msg ok";
     msg.textContent = data.saved ? "Đã nhận diện và lưu kết quả." : "Đã nhận diện nhưng KHÔNG lưu được vào cơ sở dữ liệu.";
+    loadHistory();
+  } catch (err) {
+    msg.className = "msg error";
+    msg.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function renderTimeline(timeline) {
+  const body = document.getElementById("timeline-body");
+  body.replaceChildren();
+  if (!timeline || timeline.length === 0) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = '<td colspan="4">Không có dữ liệu.</td>';
+    body.appendChild(tr);
+    return;
+  }
+  for (const item of timeline) {
+    const tr = document.createElement("tr");
+    [item.time_sec, item.counts.empty, item.counts.occupied, item.counts.unknown].forEach((v) => {
+      const td = document.createElement("td");
+      td.textContent = v;
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  }
+}
+
+document.getElementById("video-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = document.getElementById("video-input");
+  const everySec = document.getElementById("every-sec").value;
+  const btn = document.getElementById("video-btn");
+  const msg = document.getElementById("video-msg");
+  if (!input.files.length) return;
+
+  const form = new FormData();
+  form.append("video", input.files[0]);
+  form.append("every_sec", everySec);
+  btn.disabled = true;
+  msg.className = "msg";
+  msg.textContent = "Đang xử lý video, có thể mất vài phút...";
+  try {
+    const res = await fetch("/api/video", { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Lỗi không xác định");
+    applyRecord(data);
+    renderTimeline(data.timeline);
+    msg.className = "msg ok";
+    msg.textContent = (data.saved ? "Đã xử lý " : "Đã xử lý (KHÔNG lưu được MongoDB) ")
+      + data.timeline.length + " khung hình từ " + data.video_name + ".";
     loadHistory();
   } catch (err) {
     msg.className = "msg error";

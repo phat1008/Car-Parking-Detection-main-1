@@ -3,6 +3,7 @@
 import logging
 import os
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,12 +16,14 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from src.parking_counter import ParkingCounter  # noqa: E402
+from web.inference import classify_frame_chunked, sample_video_frames  # noqa: E402
 from web.layout import build_layout  # noqa: E402
 from web.storage import DetectionStore  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-MAX_UPLOAD_MB = 10
+MAX_UPLOAD_MB = 60
+MAX_VIDEO_FRAMES = 60
 
 
 def _default_detector():
@@ -69,6 +72,67 @@ def create_app(detector=None, store=None):
             len(lane) for col in layout for lane in col["lanes"]
         )})
 
+    @app.post("/api/video")
+    def detect_video():
+        file = request.files.get("video")
+        if file is None or file.filename == "":
+            return jsonify({"error": "Thiếu file video (field 'video')."}), 400
+
+        try:
+            every_sec = min(max(float(request.form.get("every_sec", 2)), 0.5), 30.0)
+            max_frames = min(max(int(request.form.get("max_frames", 30)), 1), MAX_VIDEO_FRAMES)
+        except ValueError:
+            return jsonify({"error": "Tham số every_sec hoặc max_frames không hợp lệ."}), 400
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        tmp.close()
+        try:
+            file.save(tmp.name)
+            timeline = []
+            last = None
+            for time_sec, frame in sample_video_frames(tmp.name, every_sec, max_frames):
+                output = classify_frame_chunked(detector, frame)
+                counts = ParkingCounter.count_slots(output["results"], detector.slots)
+                timeline.append({"time_sec": round(time_sec, 2), "counts": counts})
+                last = output
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception:
+            logger.exception("Lỗi khi xử lý video")
+            return jsonify({"error": "Lỗi khi xử lý video."}), 500
+        finally:
+            os.remove(tmp.name)
+
+        if last is None:
+            return jsonify({"error": "Video không có khung hình nào."}), 400
+
+        record = {
+            "camera_id": camera_id,
+            "source": "video",
+            "video_name": file.filename,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "counts": timeline[-1]["counts"],
+            "slots": [
+                {
+                    "id": item["index"],
+                    "state": item["state"],
+                    "confidence": item["confidence"],
+                    "probability_occupied": item["probability_occupied"],
+                }
+                for item in last["results"]
+            ],
+            "timeline": timeline,
+        }
+
+        saved = True
+        try:
+            store.save(record)
+        except Exception:
+            logger.exception("Không lưu được kết quả video vào MongoDB")
+            saved = False
+
+        return jsonify({**record, "saved": saved})
+
     @app.post("/api/detect")
     def detect():
         file = request.files.get("image")
@@ -80,7 +144,7 @@ def create_app(detector=None, store=None):
             return jsonify({"error": "Không đọc được ảnh. Hãy dùng JPG hoặc PNG."}), 400
 
         try:
-            output = detector.classify_frame(frame)
+            output = classify_frame_chunked(detector, frame)
         except Exception:
             logger.exception("Lỗi khi nhận diện ảnh")
             return jsonify({"error": "Lỗi khi chạy model."}), 500
