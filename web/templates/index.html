@@ -20,7 +20,17 @@
     .stat .label { color:var(--muted); font-size:13px; }
 
     /* Bố cục bãi đỗ: các cột nằm ngang, mỗi cột gồm 2 dãy đặt cạnh nhau */
-    .lot { display:flex; gap:12px; overflow-x:auto; padding-bottom:8px; }
+    .map { position:relative; width:100%; max-width:1000px; margin:0 auto; padding-bottom:56.39%;
+           background:#0b0d12; border-radius:8px; overflow:hidden; }
+    .map-slot { position:absolute; box-sizing:border-box; border-radius:2px; font-size:8px; font-weight:700;
+                color:#0b0d10; display:flex; align-items:center; justify-content:center; line-height:1;
+                overflow:hidden; white-space:nowrap; }
+    .map-slot.empty { background:var(--empty); }
+    .map-slot.occupied { background:var(--occupied); color:#fff; }
+    .map-slot.unknown { background:var(--unknown); }
+    .map-slot.invalid { background:var(--invalid); color:#fff; }
+    .map-slot.pending { background:var(--pending); color:var(--muted); }
+    .lot { display:block; }
     .column { display:flex; flex-direction:column; align-items:center; gap:6px; flex:0 0 auto; }
     .column-label { font-size:11px; color:var(--muted); }
     .lanes { display:flex; gap:4px; }
@@ -108,6 +118,7 @@
 <script>
 const STATE_LABELS = { empty: "Trống", occupied: "Có xe", unknown: "Không chắc chắn", invalid: "Lỗi" };
 let layoutColumns = [];   // [{column, lanes: [[id, ...], [id, ...]]}]
+let geometry = null;        // {source_width, source_height, boxes: [{id, x, y, width, height}]}
 let slotStates = {};      // id -> {state, confidence}
 
 function setText(id, value) { document.getElementById(id).textContent = value; }
@@ -123,36 +134,29 @@ function renderCounts(counts, createdAt) {
 function renderLot() {
   const lot = document.getElementById("lot");
   lot.replaceChildren();
-  for (const col of layoutColumns) {
-    const colEl = document.createElement("div");
-    colEl.className = "column";
+  if (!geometry) return;
 
-    const label = document.createElement("div");
-    label.className = "column-label";
-    label.textContent = "Cột " + col.column;
-    colEl.appendChild(label);
+  const map = document.createElement("div");
+  map.className = "map";
+  const sw = geometry.source_width;
+  const sh = geometry.source_height;
 
-    const lanesEl = document.createElement("div");
-    lanesEl.className = "lanes";
-    for (const lane of col.lanes) {
-      const laneEl = document.createElement("div");
-      laneEl.className = "lane";
-      for (const id of lane) {
-        const info = slotStates[id];
-        const state = info ? info.state : "pending";
-        const el = document.createElement("div");
-        el.className = "slot " + state;
-        el.title = info
-          ? `Ô ${id}: ${STATE_LABELS[state] || state} (độ tin cậy ${(info.confidence * 100).toFixed(1)}%)`
-          : `Ô ${id}: chưa nhận diện`;
-        el.textContent = id;
-        laneEl.appendChild(el);
-      }
-      lanesEl.appendChild(laneEl);
-    }
-    colEl.appendChild(lanesEl);
-    lot.appendChild(colEl);
+  for (const box of geometry.boxes) {
+    const info = slotStates[box.id];
+    const state = info ? info.state : "pending";
+    const el = document.createElement("div");
+    el.className = "map-slot " + state;
+    el.style.left = (box.x / sw * 100) + "%";
+    el.style.top = (box.y / sh * 100) + "%";
+    el.style.width = (box.width / sw * 100) + "%";
+    el.style.height = (box.height / sh * 100) + "%";
+    el.title = info
+      ? `Ô ${box.id}: ${STATE_LABELS[state] || state} (độ tin cậy ${(info.confidence * 100).toFixed(1)}%)`
+      : `Ô ${box.id}: chưa nhận diện`;
+    el.textContent = box.id;
+    map.appendChild(el);
   }
+  lot.appendChild(map);
 }
 
 function applyRecord(record) {
@@ -167,6 +171,7 @@ async function loadLayout() {
     const res = await fetch("/api/layout");
     const data = await res.json();
     layoutColumns = data.columns;
+    geometry = data;
     setText("configured-count", data.total_slots);
     renderLot();
   } catch (err) {

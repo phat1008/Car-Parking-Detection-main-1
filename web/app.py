@@ -68,9 +68,23 @@ def create_app(detector=None, store=None):
 
     @app.get("/api/layout")
     def layout_view():
-        return jsonify({"columns": layout, "total_slots": sum(
-            len(lane) for col in layout for lane in col["lanes"]
-        )})
+        boxes = [
+            {
+                "id": slot["id"],
+                "x": slot["x"],
+                "y": slot["y"],
+                "width": slot["width"],
+                "height": slot["height"],
+            }
+            for slot in detector.slots
+        ]
+        return jsonify({
+            "columns": layout,
+            "boxes": boxes,
+            "source_width": detector.slot_manager.source_width,
+            "source_height": detector.slot_manager.source_height,
+            "total_slots": len(boxes),
+        })
 
     @app.post("/api/video")
     def detect_video():
