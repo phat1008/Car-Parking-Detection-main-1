@@ -1,4 +1,4 @@
-import base64
+﻿import base64
 import json
 from io import BytesIO
 from threading import Event
@@ -194,7 +194,7 @@ def test_video_endpoint_streams_annotated_frames_and_saves_summary(monkeypatch):
     assert completed["counts"]["occupied"] == 1
     assert completed["processed_frames"] == 8
     assert completed["processed_inferences"] == 5
-    assert completed["saved"] is True
+    assert completed["saved"] is False  # store trong bộ nhớ, không có MONGO_URI
     assert len(store.records) == 1
     assert "preview" not in store.records[0]
 
@@ -275,3 +275,4 @@ def test_insights_endpoint_reads_reports_from_application_directory(tmp_path, mo
     assert data["model_evaluation"] is None
     assert data["latest_run"] is None
     assert len(data["notices"]) == 2
+

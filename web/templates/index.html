@@ -416,7 +416,7 @@ function renderRunReport(record) {
   const timeline = Array.isArray(record.timeline) ? record.timeline : [];
   const rows = [
     ["Ngu\u1ed3n video", record.video_name || "-"],
-    ["Th\u1eddi \u0111i\u1ec3m l\u01b0u (UTC)", formatDateTime(record.created_at)],
+    ["Th\u1eddi \u0111i\u1ec3m l\u01b0u (gi\u1edd Vi\u1ec7t Nam)", formatDateTime(record.created_at)],
     ["S\u1ed1 khung h\u00ecnh \u0111\u00e3 x\u1eed l\u00fd", record.processed_frames ?? "-"],
     ["S\u1ed1 l\u1ea7n nh\u1eadn di\u1ec7n", record.processed_inferences ?? "-"],
     ["Nh\u1eadn di\u1ec7n m\u1ed7i (khung h\u00ecnh)", record.inference_interval ?? "-"],
@@ -584,4 +584,6 @@ loadLatestRunReport();
 </script>
 </body>
 </html>
+
+
 
