@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="vi">
 <head>
   <meta charset="utf-8">
@@ -141,6 +141,24 @@
 </main>
 
 <script>
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (isNaN(date)) return value;
+  const parts = new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type) => parts.find((p) => p.type === type).value;
+  return `${get("day")}/${get("month")}/${get("year")} ${get("hour")}:${get("minute")}:${get("second")}`;
+}
+
 const STATE_LABELS = { empty: "Trống", occupied: "Có xe", unknown: "Không chắc chắn", invalid: "Lỗi" };
 let layoutColumns = [];   // [{column, lanes: [[id, ...], [id, ...]]}]
 let geometry = null;        // {source_width, source_height, boxes: [{id, x, y, width, height}]}
@@ -153,7 +171,7 @@ function renderCounts(counts, createdAt) {
   setText("occupied-count", counts.occupied);
   setText("unknown-count", counts.unknown);
   setText("configured-count", counts.configured);
-  setText("updated-at", createdAt ? "Cập nhật lúc: " + new Date(createdAt).toLocaleString() : "Chưa có dữ liệu.");
+  setText("updated-at", createdAt ? "Cập nhật lúc: " + formatDateTime(createdAt) : "Chưa có dữ liệu.");
 }
 
 function buildMap(target, states) {
@@ -193,7 +211,7 @@ function showHistoryRecord(record) {
 
   const title = document.createElement("p");
   title.className = "legend";
-  const when = new Date(record.created_at).toLocaleString();
+  const when = formatDateTime(record.created_at);
   title.textContent = (record.source === "video" ? "Video: " + record.video_name : "Ảnh nhận diện")
     + " — " + when
     + " — trống " + record.counts.empty + ", có xe " + record.counts.occupied
@@ -275,7 +293,7 @@ async function loadHistory() {
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
       const source = item.source === "video" ? item.video_name : "Ảnh";
-      [new Date(item.created_at).toLocaleString(), source,
+      [formatDateTime(item.created_at), source,
        item.counts.empty, item.counts.occupied, item.counts.unknown].forEach((v) => {
         const td = document.createElement("td");
         td.textContent = v;
@@ -398,7 +416,7 @@ function renderRunReport(record) {
   const timeline = Array.isArray(record.timeline) ? record.timeline : [];
   const rows = [
     ["Ngu\u1ed3n video", record.video_name || "-"],
-    ["Th\u1eddi \u0111i\u1ec3m l\u01b0u (UTC)", record.created_at || "-"],
+    ["Th\u1eddi \u0111i\u1ec3m l\u01b0u (UTC)", formatDateTime(record.created_at)],
     ["S\u1ed1 khung h\u00ecnh \u0111\u00e3 x\u1eed l\u00fd", record.processed_frames ?? "-"],
     ["S\u1ed1 l\u1ea7n nh\u1eadn di\u1ec7n", record.processed_inferences ?? "-"],
     ["Nh\u1eadn di\u1ec7n m\u1ed7i (khung h\u00ecnh)", record.inference_interval ?? "-"],
@@ -566,3 +584,4 @@ loadLatestRunReport();
 </script>
 </body>
 </html>
+
