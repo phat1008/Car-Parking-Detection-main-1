@@ -1,4 +1,4 @@
-"""Web dashboard cho hệ thống nhận diện chỗ đỗ xe."""
+﻿"""Web dashboard cho hệ thống nhận diện chỗ đỗ xe."""
 
 import base64
 import json
@@ -417,7 +417,7 @@ def create_app(detector=None, store=None):
                     "timeline": timeline,
                 }
 
-                saved = True
+                saved = store.persistent
                 try:
                     store.save(record)
                 except Exception:
