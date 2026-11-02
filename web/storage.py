@@ -3,10 +3,12 @@
 import logging
 import os
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import Lock
 
 logger = logging.getLogger(__name__)
+
+VN_TZ = timezone(timedelta(hours=7))
 
 
 def _to_bson_date(value):
@@ -58,6 +60,7 @@ class DetectionStore:
             # insert_one thêm _id vào dict truyền vào, nên truyền bản sao.
             doc = dict(record)
             doc["created_at"] = _to_bson_date(doc.get("created_at"))
+            doc["created_at_vn"] = _to_bson_date(doc["created_at"]).astimezone(VN_TZ).strftime("%Y-%m-%d %H:%M:%S")
             self._collection.insert_one(doc)
 
     def latest(self):
@@ -75,3 +78,4 @@ class DetectionStore:
 
         with self._lock:
             return list(self._memory)[:limit]
+
