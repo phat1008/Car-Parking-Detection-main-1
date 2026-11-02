@@ -484,4 +484,3 @@ def create_app(detector=None, store=None):
         return jsonify({"error": f"File vượt quá {MAX_UPLOAD_MB} MB."}), 413
 
     return app
-

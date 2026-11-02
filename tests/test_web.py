@@ -275,4 +275,3 @@ def test_insights_endpoint_reads_reports_from_application_directory(tmp_path, mo
     assert data["model_evaluation"] is None
     assert data["latest_run"] is None
     assert len(data["notices"]) == 2
-
